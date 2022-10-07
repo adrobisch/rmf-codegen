@@ -32,6 +32,9 @@ import io.vrap.codegen.languages.typescript.test.TypescriptTestModule
 import io.vrap.codegen.languages.go.GoBaseTypes
 import io.vrap.codegen.languages.go.model.GoModelModule
 import io.vrap.codegen.languages.go.client.GoClientModule
+import io.vrap.codegen.languages.rust.model.RustModelModule
+import io.vrap.codegen.languages.rust.client.RustClientModule
+
 import io.vrap.rmf.codegen.CodeGeneratorConfig
 import io.vrap.rmf.codegen.di.*
 import io.vrap.rmf.codegen.toSeconds
@@ -66,6 +69,7 @@ enum class GenerationTarget {
     CSHARP_TEST,
     OAS,
     PYTHON_CLIENT,
+    RUST_CLIENT
 }
 const val ValidTargets = "JAVA_CLIENT, JAVA_TEST, TYPESCRIPT_CLIENT, TYPESCRIPT_TEST, CSHARP_CLIENT, CSHARP_TEST, PHP_CLIENT, PHP_BASE, PHP_TEST, POSTMAN, RAML_DOC, OAS, PYTHON_CLIENT"
 
@@ -267,6 +271,10 @@ class GenerateSubcommand : Callable<Int> {
                     GenerationTarget.GO_CLIENT -> {
                         val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, GoBaseTypes)
                         RamlGeneratorComponent(generatorModule, GoModelModule, GoClientModule)
+                    }
+                    GenerationTarget.RUST_CLIENT -> {
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, GoBaseTypes)
+                        RamlGeneratorComponent(generatorModule, GoModelModule, RustClientModule)
                     }
                 }
             } else {
