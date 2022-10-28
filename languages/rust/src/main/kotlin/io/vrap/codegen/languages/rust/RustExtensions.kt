@@ -1,9 +1,6 @@
 package io.vrap.codegen.languages.rust
 
-import io.vrap.rmf.codegen.types.*
-import io.vrap.rmf.raml.model.types.*
 import io.vrap.rmf.raml.model.types.DescriptionFacet
-import java.util.*
 
 fun DescriptionFacet.toBlockComment(): String {
     val description = this.description

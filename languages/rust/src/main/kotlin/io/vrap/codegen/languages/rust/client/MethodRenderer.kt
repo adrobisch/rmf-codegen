@@ -2,9 +2,9 @@ package io.vrap.codegen.languages.rust.client
 import io.vrap.codegen.languages.extensions.isPatternProperty
 import io.vrap.codegen.languages.extensions.returnType
 import io.vrap.codegen.languages.rust.*
-import io.vrap.codegen.languages.rust.GoObjectTypeExtensions
-import io.vrap.codegen.languages.rust.goTypeName
-import io.vrap.codegen.languages.rust.simpleGoName
+import io.vrap.codegen.languages.rust.RustObjectTypeExtensions
+import io.vrap.codegen.languages.rust.rustTypeName
+import io.vrap.codegen.languages.rust.simpleRustName
 import io.vrap.rmf.codegen.di.BasePackageName
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.MethodRenderer
@@ -19,11 +19,11 @@ import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.types.ArrayType
 import io.vrap.rmf.raml.model.types.FileType
 
-class GoMethodRenderer constructor(
+class RustMethodRenderer constructor(
     private val clientConstants: ClientConstants,
     override val vrapTypeProvider: VrapTypeProvider,
     @BasePackageName val basePackageName: String
-) : MethodRenderer, GoObjectTypeExtensions {
+) : MethodRenderer, RustObjectTypeExtensions {
 
     override fun render(type: Method): TemplateFile {
 
@@ -33,7 +33,7 @@ class GoMethodRenderer constructor(
             content = """|
                 |package $basePackageName
                 |
-                |$goGeneratedComment
+                |$rustGeneratedComment
                 |
                 |<${type.importStatement()}>
                 |
@@ -66,12 +66,12 @@ class GoMethodRenderer constructor(
             val type = it.type.toVrapType()
             when (type) {
                 is VrapArrayType -> when (type.itemType) {
-                    GoBaseTypes.integerType -> true
-                    GoBaseTypes.longType -> true
+                    RustBaseTypes.integerType -> true
+                    RustBaseTypes.longType -> true
                     else -> false
                 }
-                GoBaseTypes.integerType -> true
-                GoBaseTypes.longType -> true
+                RustBaseTypes.integerType -> true
+                RustBaseTypes.longType -> true
                 else -> false
             }
         }
@@ -95,7 +95,7 @@ class GoMethodRenderer constructor(
 
         return """
             |type ${toStructName()} struct {
-            |   ${if (bodyVrapType != null) "body    ${this.vrapType()?.goTypeName()}" else ""}
+            |   ${if (bodyVrapType != null) "body    ${this.vrapType()?.rustTypeName()}" else ""}
             |   url    string
             |   client *Client
             |   headers http.Header
@@ -159,10 +159,10 @@ class GoMethodRenderer constructor(
                 val addStatement = {
                     key: String, input: String, type: VrapType ->
                     when (type) {
-                        GoBaseTypes.integerType -> """values.Add("$key", strconv.Itoa($input))"""
-                        GoBaseTypes.longType -> """values.Add("$key", strconv.Itoa($input))"""
-                        GoBaseTypes.doubleType -> """values.Add("$key", fmt.Sprintf("%f", $input))"""
-                        GoBaseTypes.booleanType -> {
+                        RustBaseTypes.integerType -> """values.Add("$key", strconv.Itoa($input))"""
+                        RustBaseTypes.longType -> """values.Add("$key", strconv.Itoa($input))"""
+                        RustBaseTypes.doubleType -> """values.Add("$key", fmt.Sprintf("%f", $input))"""
+                        RustBaseTypes.booleanType -> {
                             """
                             |if ($input) {
                             |    values.Add("$key", "true")
@@ -234,8 +234,8 @@ class GoMethodRenderer constructor(
     }
 
     private fun Method.renderFuncExecute(): String {
-        var methodReturn = if (this.returnType().toVrapType().goTypeName() != "nil")
-            "(result *${this.returnType().toVrapType().goTypeName()}, err error)"
+        var methodReturn = if (this.returnType().toVrapType().rustTypeName() != "nil")
+            "(result *${this.returnType().toVrapType().rustTypeName()}, err error)"
         else
             "error"
 
@@ -288,7 +288,7 @@ class GoMethodRenderer constructor(
     }
 
     fun Method.hasReturnValue(): Boolean {
-        return this.returnType().toVrapType().goTypeName() != "nil"
+        return this.returnType().toVrapType().rustTypeName() != "nil"
     }
 
     fun Method.responseHandler(): String {
@@ -300,7 +300,7 @@ class GoMethodRenderer constructor(
                 val statusCode = it.statusCode
                 if (it.bodies.isNotEmpty()) {
                     val vrap = it.bodies[0].type.toVrapType()
-                    vrap.simpleGoName() to statusCode
+                    vrap.simpleRustName() to statusCode
                 } else {
                     "nil" to statusCode
                 }

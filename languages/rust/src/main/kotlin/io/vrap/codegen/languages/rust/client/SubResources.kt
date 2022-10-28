@@ -2,7 +2,7 @@ package io.vrap.codegen.languages.rust.client
 import io.vrap.codegen.languages.extensions.getMethodName
 import io.vrap.codegen.languages.rust.*
 import io.vrap.codegen.languages.rust.exportName
-import io.vrap.codegen.languages.rust.goName
+import io.vrap.codegen.languages.rust.rustName
 import io.vrap.rmf.raml.model.resources.ResourceContainer
 
 fun ResourceContainer.subResources(structName: String): String {
@@ -12,18 +12,18 @@ fun ResourceContainer.subResources(structName: String): String {
         .map {
             var args = if (!it.relativeUri.variables.isNullOrEmpty()) {
                 it.relativeUri.variables
-                    .map { it.goName() }
+                    .map { it.rustName() }
                     .map { "$it string" }
                     .joinToString(separator = ", ")
             } else { "" }
 
             val assignments =
                 it.relativeUri.variables
-                    .map { it.goName() }
+                    .map { it.rustName() }
                     .map { "$it: $it," }
                     .plus(
                         (it.fullUri.variables.asList() - it.relativeUri.variables.asList())
-                            .map { it.goName() }
+                            .map { it.rustName() }
                             .map { "$it: $pName.$it," }
                     )
                     .joinToString(separator = "\n")

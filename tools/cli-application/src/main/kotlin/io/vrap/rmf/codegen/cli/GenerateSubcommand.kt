@@ -32,6 +32,7 @@ import io.vrap.codegen.languages.typescript.test.TypescriptTestModule
 import io.vrap.codegen.languages.go.GoBaseTypes
 import io.vrap.codegen.languages.go.model.GoModelModule
 import io.vrap.codegen.languages.go.client.GoClientModule
+import io.vrap.codegen.languages.rust.RustBaseTypes
 import io.vrap.codegen.languages.rust.model.RustModelModule
 import io.vrap.codegen.languages.rust.client.RustClientModule
 
@@ -273,8 +274,8 @@ class GenerateSubcommand : Callable<Int> {
                         RamlGeneratorComponent(generatorModule, GoModelModule, GoClientModule)
                     }
                     GenerationTarget.RUST_CLIENT -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, GoBaseTypes)
-                        RamlGeneratorComponent(generatorModule, GoModelModule, RustClientModule)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, RustBaseTypes)
+                        RamlGeneratorComponent(generatorModule, RustModelModule) //RustClientModule
                     }
                 }
             } else {

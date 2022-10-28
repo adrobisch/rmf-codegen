@@ -1,5 +1,5 @@
 package io.vrap.codegen.languages.rust.client
-import io.vrap.codegen.languages.rust.goName
+import io.vrap.codegen.languages.rust.rustName
 import io.vrap.codegen.languages.rust.snakeCase
 import io.vrap.rmf.raml.model.types.ObjectInstance
 import io.vrap.rmf.raml.model.types.QueryParameter
@@ -29,7 +29,7 @@ fun QueryParameter.paramName(): String {
             .filter { propertyValue -> propertyValue.name == "paramName" }
             .findFirst()
             .orElse(null).value as StringInstance
-        return paramName.value.goName()
+        return paramName.value.rustName()
     }
-    return this.name.goName()
+    return this.name.rustName()
 }

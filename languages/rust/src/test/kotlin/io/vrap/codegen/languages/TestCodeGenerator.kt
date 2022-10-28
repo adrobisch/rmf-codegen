@@ -1,6 +1,6 @@
 package io.vrap.codegen.languages
 
-import io.vrap.codegen.languages.rust.GoBaseTypes
+import io.vrap.codegen.languages.rust.RustBaseTypes
 import io.vrap.codegen.languages.rust.client.RustClientModule
 import io.vrap.codegen.languages.rust.model.RustModelModule
 import io.vrap.rmf.codegen.CodeGeneratorConfig
@@ -20,7 +20,7 @@ class TestGoCodeGenerator {
 
     @Test
     fun generateGoModels() {
-        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, GoBaseTypes)
+        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, RustBaseTypes)
         val generatorComponent = RamlGeneratorComponent(generatorModule, RustModelModule, RustClientModule)
         generatorComponent.generateFiles()
     }

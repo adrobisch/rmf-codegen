@@ -20,7 +20,7 @@ object RustClientModule : Module {
         ),
         MethodGenerator(
             setOf(
-                GoMethodRenderer(
+                RustMethodRenderer(
                     generatorModule.clientConstants(),
                     generatorModule.vrapTypeProvider(),
                     generatorModule.providePackageName()

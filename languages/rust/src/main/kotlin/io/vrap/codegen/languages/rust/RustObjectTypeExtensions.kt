@@ -6,7 +6,7 @@ import io.vrap.rmf.raml.model.types.*
 import org.eclipse.emf.ecore.EObject
 import java.util.*
 
-interface GoObjectTypeExtensions : ExtensionsBase {
+interface RustObjectTypeExtensions : ExtensionsBase {
 
     fun AnyType.renderTypeExpr(): String {
         return when (this) {
@@ -18,13 +18,13 @@ interface GoObjectTypeExtensions : ExtensionsBase {
                     if (common != null) {
                         return common.renderTypeExpr()
                     }
-                    return "interface{}"
+                    return "trait"
                 }
                 return oneOf[0].renderTypeExpr()
             }
-            is IntersectionType -> allOf.map { it.renderTypeExpr() }.joinToString(" & ")
+            is IntersectionType -> allOf.map { it.renderTypeExpr() }.joinToString(" : ")
             is NilType -> "None"
-            else -> toVrapType().goTypeName()
+            else -> toVrapType().rustTypeName()
         }
     }
 
@@ -68,10 +68,10 @@ interface GoObjectTypeExtensions : ExtensionsBase {
     fun VrapType.createGoVrapType(): VrapType {
         return when (this) {
             is VrapObjectType -> {
-                VrapObjectType(`package` = this.`package`.goModelFileName(), simpleClassName = this.simpleClassName)
+                VrapObjectType(`package` = this.`package`.rustModuleFileName(), simpleClassName = this.simpleClassName)
             }
             is VrapEnumType -> {
-                VrapEnumType(`package` = this.`package`.goModelFileName(), simpleClassName = this.simpleClassName)
+                VrapEnumType(`package` = this.`package`.rustModuleFileName(), simpleClassName = this.simpleClassName)
             }
             is VrapArrayType -> {
                 VrapArrayType(itemType = this.itemType.createGoVrapType())
@@ -119,7 +119,7 @@ interface GoObjectTypeExtensions : ExtensionsBase {
             }
             .toSortedMap()
             .map {
-                val allImportedClasses = it.value.map { it.simpleGoName() }.sorted().joinToString(", ")
+                val allImportedClasses = it.value.map { it.simpleRustName() }.sorted().joinToString(", ")
                 "from ${it.key.toRelativePackageName(moduleName)} import $allImportedClasses"
             }
     }
@@ -135,7 +135,7 @@ interface GoObjectTypeExtensions : ExtensionsBase {
         // )
     }
 
-    fun ObjectType.goStructFields(all: Boolean): List<Property> {
+    fun ObjectType.rustStructFields(all: Boolean): List<Property> {
         var props: List<Property> = allProperties
 
         if (!all) {
@@ -176,7 +176,7 @@ interface GoObjectTypeExtensions : ExtensionsBase {
             return false
         }
 
-        return goStructFields(true)
+        return rustStructFields(true)
             .any {
                 it.type is StringType && it.name.lowercase() == "message"
             }

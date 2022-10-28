@@ -9,7 +9,7 @@ object RustModelModule : Module {
     override fun configure(generatorModule: RamlGeneratorModule) = setOf<CodeGenerator>(
         FileGenerator(
             setOf(
-                GoFileProducer(
+                RustFileProducer(
                     generatorModule.vrapTypeProvider(),
                     generatorModule.allAnyTypes(),
                     generatorModule.providePackageName()

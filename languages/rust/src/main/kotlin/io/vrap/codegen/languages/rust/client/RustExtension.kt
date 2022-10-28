@@ -2,10 +2,8 @@ package io.vrap.codegen.languages.rust.client
 
 import io.vrap.codegen.languages.extensions.resource
 import io.vrap.codegen.languages.extensions.toResourceName
-import io.vrap.codegen.languages.rust.*
 import io.vrap.codegen.languages.rust.exportName
 import io.vrap.codegen.languages.rust.snakeCase
-import io.vrap.rmf.codegen.types.*
 import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Resource
 import io.vrap.rmf.raml.model.types.AnyType

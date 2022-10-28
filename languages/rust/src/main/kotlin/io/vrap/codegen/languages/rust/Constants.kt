@@ -1,3 +1,3 @@
 package io.vrap.codegen.languages.rust
 
-val goGeneratedComment = "// Generated file, please do not change!!!"
+val rustGeneratedComment = "// Generated file, please do not change!!!"

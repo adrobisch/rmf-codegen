@@ -1,10 +1,10 @@
 package io.vrap.codegen.languages.rust.client
 
 import io.vrap.codegen.languages.rust.*
-import io.vrap.codegen.languages.rust.GoObjectTypeExtensions
+import io.vrap.codegen.languages.rust.RustObjectTypeExtensions
 import io.vrap.codegen.languages.rust.exportName
-import io.vrap.codegen.languages.rust.goName
-import io.vrap.codegen.languages.rust.goTypeName
+import io.vrap.codegen.languages.rust.rustName
+import io.vrap.codegen.languages.rust.rustTypeName
 import io.vrap.rmf.codegen.di.BasePackageName
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.ResourceRenderer
@@ -23,7 +23,7 @@ class RequestBuilder constructor(
     val api: Api,
     override val vrapTypeProvider: VrapTypeProvider,
     @BasePackageName val basePackageName: String
-) : ResourceRenderer, GoObjectTypeExtensions {
+) : ResourceRenderer, RustObjectTypeExtensions {
 
     override fun render(type: Resource): TemplateFile {
 
@@ -33,7 +33,7 @@ class RequestBuilder constructor(
             content = """|
                 |package $basePackageName
                 |
-                |$goGeneratedComment
+                |$rustGeneratedComment
                 |
                 |<${type.importStatement()}>
                 |
@@ -49,7 +49,7 @@ class RequestBuilder constructor(
             this
                 .fullUri
                 .variables
-                .map { it.goName() }
+                .map { it.rustName() }
                 .map { "$it   string" }
                 .joinToString(separator = "\n")
         } else { "" }
@@ -97,7 +97,7 @@ class RequestBuilder constructor(
         val methodKwargs = listOf<String>()
             .plus(
                 {
-                    if (bodyVrapType != null && bodyVrapType !is VrapNilType) "body ${method.vrapType()?.goTypeName()}" else ""
+                    if (bodyVrapType != null && bodyVrapType !is VrapNilType) "body ${method.vrapType()?.rustTypeName()}" else ""
                 }()
             )
             .filter {
@@ -107,11 +107,11 @@ class RequestBuilder constructor(
 
         val assignments =
             this.relativeUri.variables
-                .map { it.goName() }
+                .map { it.rustName() }
                 .map { "$it: rb.$it," }
                 .plus(
                     (this.fullUri.variables.asList() - this.relativeUri.variables.asList())
-                        .map { it.goName() }
+                        .map { it.rustName() }
                         .map { "$it: rb.$it," }
                 )
                 .joinToString(separator = "\n")
@@ -137,7 +137,7 @@ class RequestBuilder constructor(
         val args = mutableListOf<String>()
         matches.map { it.groupValues[1] }.forEach {
             pattern = pattern.replace("{$it}", "%s")
-            args.add("rb.${it.goName()}")
+            args.add("rb.${it.rustName()}")
         }
         return "fmt.Sprintf(\"${pattern}\", ${args.joinToString(", ")})"
     }

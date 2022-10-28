@@ -30,7 +30,7 @@ class ClientFileProducer constructor(
             content = """|
                 |package $basePackageName
                 |
-                |$goGeneratedComment
+                |$rustGeneratedComment
                 |
                 |import (
                 |    "context"
@@ -172,7 +172,7 @@ class ClientFileProducer constructor(
             content = """|
                 |package $basePackageName
                 |
-                |$goGeneratedComment
+                |$rustGeneratedComment
                 |
                 |<${type.subResources("Client")}>
                 |
@@ -186,7 +186,7 @@ class ClientFileProducer constructor(
             content = """|
                 |package $basePackageName
                 |
-                |$goGeneratedComment
+                |$rustGeneratedComment
                 |
                 |import (
                 |	"fmt"
@@ -211,7 +211,7 @@ class ClientFileProducer constructor(
             content = """|
                 |package $basePackageName
                 |
-                |$goGeneratedComment
+                |$rustGeneratedComment
                 |
                 |import (
                 |    "bytes"
@@ -282,7 +282,7 @@ class ClientFileProducer constructor(
             content = """|
                 |package $basePackageName
                 |
-                |$goGeneratedComment
+                |$rustGeneratedComment
                 |
                 |import (
                 |    "encoding/json"

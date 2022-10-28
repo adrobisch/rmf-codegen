@@ -18,11 +18,11 @@ fun String.toRelativePackageName(base: String): String {
     return path + this
 }
 
-fun String.goModelFileName(): String {
+fun String.rustModuleFileName(): String {
     return this.split("/")
         .map { StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(it) }
         .joinToString(separator = "/")
-        .replace("models/", "types_")
+        .replace("models/", "")
         .replace("_+".toRegex(), "_")
 }
 
@@ -35,17 +35,11 @@ fun String.goClientFileName(): String {
 }
 
 fun String.exportName(): String {
-    if (this[0].isUpperCase()) {
-        return this
-    }
-    var name = StringCaseFormat.UPPER_CAMEL_CASE.apply(this.replace(".", "_"))
-    mapOf(
-        "^Id$" to "ID"
-    ).forEach { (key, value) -> name = name.replace(key.toRegex(), value) }
+    val name = this.replace(".", "_")
     return name
 }
 
-fun String.goName(): String {
+fun String.rustName(): String {
     val name = StringCaseFormat.LOWER_CAMEL_CASE.apply(this.replace(".", "_"))
     return name
 }
