@@ -4,8 +4,8 @@ import io.vrap.rmf.codegen.types.LanguageBaseTypes
 import io.vrap.rmf.codegen.types.VrapScalarType
 
 object RustBaseTypes : LanguageBaseTypes(
-    anyType = nativeRustType("&dyn Any"),
-    objectType = nativeRustType("&dyn Any"),
+    anyType = nativeRustType("serde_json::Value"),
+    objectType = nativeRustType("serde_json::Value"),
     integerType = nativeRustType("u32"),
     longType = nativeRustType("u64"),
     doubleType = nativeRustType("f64"),

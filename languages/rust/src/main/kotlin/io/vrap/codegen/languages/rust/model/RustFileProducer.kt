@@ -134,6 +134,7 @@ class RustFileProducer constructor(
         } else {
             val structField = """
                 |<${toBlockComment().escapeAll()}>
+                |#[derive(Serialize, Deserialize)]
                 |struct ${name.exportName()} {
                 |    <${renderStructFields()}>
                 |}
