@@ -1,4 +1,5 @@
 package io.vrap.codegen.languages.rust
+
 import io.vrap.rmf.raml.model.util.StringCaseFormat
 
 fun String.toRelativePackageName(base: String): String {
@@ -20,31 +21,28 @@ fun String.toRelativePackageName(base: String): String {
 
 fun String.rustModuleFileName(): String {
     return this.split("/")
-        .map { StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(it) }
-        .joinToString(separator = "/")
-        .replace("models/", "")
-        .replace("_+".toRegex(), "_")
-}
-
-fun String.goClientFileName(): String {
-    return this.split("/")
-        .map { StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(it) }
-        .joinToString(separator = "/")
-        .replace("client/", "client_")
-        .replace("_+".toRegex(), "_")
+            .map { StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(it) }
+            .joinToString(separator = "/")
+            .replace("platform/", "api_")
+            .replace("models/", "models_")
+            .replace("_+".toRegex(), "_")
 }
 
 fun String.exportName(): String {
-    val name = this.replace(".", "_")
-    return name
+    return this.replace(".", "_")
 }
 
 fun String.rustName(): String {
-    val name = StringCaseFormat.LOWER_CAMEL_CASE.apply(this.replace(".", "_"))
-    return name
+    if (this == "type") {
+        return "type_hint"
+    }
+    return StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(this.replace(".", "_"))
+}
+
+fun String.rustEnumName(): String {
+    return StringCaseFormat.UPPER_UNDERSCORE_CASE.apply(this.replace(".", "_"))
 }
 
 fun String.snakeCase(): String {
-    val name = StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(this.replace(".", "_"))
-    return name
+    return StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(this.replace(".", "_"))
 }

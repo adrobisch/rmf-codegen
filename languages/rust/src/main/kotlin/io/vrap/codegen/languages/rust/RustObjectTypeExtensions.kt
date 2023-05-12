@@ -45,7 +45,8 @@ interface RustObjectTypeExtensions : ExtensionsBase {
         return when (type) {
             is VrapObjectType -> type.`package`
             is VrapEnumType -> type.`package`
-            else -> ""
+            is VrapScalarType -> "types"
+            else -> "unknown"
         }
     }
 
@@ -62,10 +63,10 @@ interface RustObjectTypeExtensions : ExtensionsBase {
 
     fun EObject?.toVrapType(): VrapType {
         val vrapType = if (this != null) vrapTypeProvider.doSwitch(this) else VrapNilType()
-        return vrapType.createGoVrapType()
+        return vrapType.createRustVrapType()
     }
 
-    fun VrapType.createGoVrapType(): VrapType {
+    fun VrapType.createRustVrapType(): VrapType {
         return when (this) {
             is VrapObjectType -> {
                 VrapObjectType(`package` = this.`package`.rustModuleFileName(), simpleClassName = this.simpleClassName)
@@ -74,7 +75,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                 VrapEnumType(`package` = this.`package`.rustModuleFileName(), simpleClassName = this.simpleClassName)
             }
             is VrapArrayType -> {
-                VrapArrayType(itemType = this.itemType.createGoVrapType())
+                VrapArrayType(itemType = this.itemType.createRustVrapType())
             }
             else -> this
         }
@@ -122,17 +123,6 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                 val allImportedClasses = it.value.map { it.simpleRustName() }.sorted().joinToString(", ")
                 "from ${it.key.toRelativePackageName(moduleName)} import $allImportedClasses"
             }
-    }
-
-    fun List<AnyType>.getTypeInheritance(type: AnyType): List<AnyType> {
-        return this
-            .filter { it.type != null && it.type.name == type.name }
-        // TODO: Shouldn't this be necessary?
-        // .plus(
-        //     this
-        //     .filter { it.type != null && it.type.name == type.name }
-        //     .flatMap { this.getTypeInheritance(it.type) }
-        // )
     }
 
     fun ObjectType.rustStructFields(all: Boolean): List<Property> {

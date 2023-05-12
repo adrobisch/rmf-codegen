@@ -2,13 +2,9 @@ package io.vrap.codegen.languages.rust.model
 
 import io.vrap.codegen.languages.extensions.getSuperTypes
 import io.vrap.codegen.languages.extensions.isPatternProperty
+import io.vrap.codegen.languages.extensions.namedSubTypes
 import io.vrap.codegen.languages.extensions.sortedByTopology
-import io.vrap.codegen.languages.rust.RustObjectTypeExtensions
-import io.vrap.codegen.languages.rust.exportName
-import io.vrap.codegen.languages.rust.rustGeneratedComment
-import io.vrap.codegen.languages.rust.rustModuleFileName
-import io.vrap.codegen.languages.rust.toBlockComment
-import io.vrap.codegen.languages.rust.toLineComment
+import io.vrap.codegen.languages.rust.*
 import io.vrap.rmf.codegen.di.AllAnyTypes
 import io.vrap.rmf.codegen.di.BasePackageName
 import io.vrap.rmf.codegen.io.TemplateFile
@@ -26,19 +22,50 @@ class RustFileProducer constructor(
         @BasePackageName val basePackageName: String
 ) : RustObjectTypeExtensions, FileProducer {
 
+    val modules =
+            allAnyTypes
+                    .filter { it is ObjectType || (it is StringType && it.pattern == null) }
+                    .groupBy {
+                        it.moduleName()
+                    }
+
     override fun produceFiles(): List<TemplateFile> {
-        return allAnyTypes.filter { it is ObjectType || (it is StringType && it.pattern == null) }
-                .groupBy {
-                    it.moduleName()
-                }
+        return modules
                 .map { entry: Map.Entry<String, List<AnyType>> ->
                     buildModule(entry.key, entry.value)
                 }
-                .toList()
+                .toList() + buildCargoToml() + buildLibRs()
+    }
+
+    private fun buildLibRs(): TemplateFile {
+        val mods = modules.keys.map { key ->
+            "mod ${key};"
+        }.toList().joinToString("\n")
+        return TemplateFile(mods, "src/lib.rs")
+    }
+
+    private fun buildCargoToml(): TemplateFile {
+        val content = """[package]
+name = "ct-rust-sdk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+""".trimMargin().keepIndentation()
+
+        return TemplateFile(content, "Cargo.toml")
     }
 
     private fun buildModule(moduleName: String, types: List<AnyType>): TemplateFile {
-        var sortedTypes = types.sortedByTopology(AnyType::getSuperTypes)
+        var sortedTypes = types.sortedByTopology(AnyType::getSuperTypes).filter {
+            when (it) {
+                is ObjectType -> it.discriminatorValue == null// only get super types of discrimiated types
+                else -> true
+            }
+        }
         val modules = getImports(sortedTypes)
                 .map {
                     "use $it;"
@@ -55,7 +82,7 @@ class RustFileProducer constructor(
        """.trimMargin().keepIndentation()
 
         var filename = moduleName.rustModuleFileName()
-        return TemplateFile(content, filename + ".rs")
+        return TemplateFile(content, "src/" + filename + ".rs")
     }
 
     private fun AnyType.renderAnyType(): String {
@@ -71,11 +98,11 @@ class RustFileProducer constructor(
 
         return objects
                 .filter { it.requiresJsonModule() }
-                .map<ObjectType, String> {
+                .map {
                     "serde::{Deserialize, Serialize}"
                 }
                 .plus("chrono::prelude::*")
-                .plus("std::iter::Map")
+                .plus("std::collections::HashMap")
                 .distinct()
     }
 
@@ -109,275 +136,84 @@ class RustFileProducer constructor(
     }
 
     private fun ObjectType.renderObjectType(): String {
-
         val isMap = allProperties.all { it.isPatternProperty() }
         if (isMap) {
             val valueType = if (allProperties.size > 0) allProperties[0].type.renderTypeExpr() else "trait"
 
             return """
             |<${toBlockComment().escapeAll()}>
-            |type $name = Map\<String, $valueType\>;
+            |type $name = HashMap\<String, $valueType\>;
             """.trimMargin()
         } else if (this.isDiscriminated()) {
             val interfaceExpr = """
                 |<${toBlockComment().escapeAll()}>
-                |trait ${name.exportName()}
+                |#[derive(Serialize, Deserialize)]
+                |#[serde(tag = "${discriminator}")]
+                |pub enum ${name.exportName()} {
+                |  <${renderSubtypeEnumStructs()}>
+                |}
             """.trimMargin()
-
-            val discriminatorMapFunc = if (this.isDiscriminated()) this.renderDiscriminatorMapper() else ""
 
             return """
             |$interfaceExpr
-            |
-            |$discriminatorMapFunc
             """.trimMargin()
         } else {
             val structField = """
                 |<${toBlockComment().escapeAll()}>
                 |#[derive(Serialize, Deserialize)]
-                |struct ${name.exportName()} {
-                |    <${renderStructFields()}>
+                |pub struct ${name.exportName()} {
+                |  <${renderStructFields(true)}>
                 |}
             """.trimMargin()
 
-            val unmarshalFunc = if (
-                    allProperties
-                            .map { it.type }
-                            .any {
-                                when (it) {
-                                    is ArrayType -> it.items.isDiscriminated()
-                                    is ObjectType -> it.isDiscriminated()
-                                    else -> false
-                                }
-                            }
-            ) this.renderUnmarshalFunc() else ""
-
-            val marshalFunc = this.renderMarshalFunc()
-            val errorFunc = this.renderErrorFunc()
-
             return """
             |$structField
-            |
-            |$unmarshalFunc
-            |$marshalFunc
-            |$errorFunc
             """.trimMargin()
         }
     }
 
-    fun ObjectType.renderErrorFunc(): String {
-        if (!this.isErrorObject()) return ""
-
-        val messageField = rustStructFields(true)
-                .filter {
-                    it.type is StringType && it.name.lowercase() == "message"
-                }
-                .firstOrNull()
-
-        // Shouldn't be possible
-        if (messageField == null) return ""
-
-        return """
-        |func (obj $name) Error() string {
-        |    if obj.${messageField.name.exportName()} != "" {
-        |        return obj.${messageField.name.exportName()}
-        |    }
-        |    return "unknown $name: failed to parse error response"
-        |}
-        """.trimMargin()
-    }
-
-    /**
-     * Render MarshalJSON() func to customize the JSON serialization. This is
-     * needed for two reasons:
-     *  1. In case this is a discriminated value, we need to add the `discriminator` field
-     *  2. There are optional slices (arrays). We remove optional values which
-     *  are nil but not empty
-     */
-    fun ObjectType.renderMarshalFunc(): String {
-        // Check if there are optional slices
-        val optSlices = allProperties.any { it.type is ArrayType && !it.required }
-
-        if (this.discriminatorValue == null && !optSlices) {
-            return ""
-        }
-
-        // Use the alias approach to marshall the struct without causing and
-        // endless recursive loop. Add `Action` field if discriminated
-        var marshalStatement = if (this.discriminatorValue != null)
-            """json.Marshal(struct {
-            |        Action string `json:"${this.discriminator()}"`
-            |        *Alias
-            |    }{Action: "$discriminatorValue", Alias: (*Alias)(&obj)})""".trimMargin()
-        else
-            """json.Marshal(struct {
-            |        *Alias
-            |    }{Alias: (*Alias)(&obj)})""".trimMargin()
-
-        val funcBody = if (!optSlices) {
-            "return $marshalStatement"
-        } else {
-            val deleteStatements = allProperties
-                    .filter { it.type is ArrayType && !it.required }
-                    .map {
-                        """
-                    |   if target["${it.name}"] == nil {
-                    |       delete(target, "${it.name}")
-                    |   }
-                    """
-                    }.joinToString("\n")
-
-            """
-            |   data, err := $marshalStatement
-            |   if err != nil {
-            |       return nil, err
-            |   }
-            |
-            |   target := make(map[string]interface{})
-            |   if err := json.Unmarshal(data, &target); err != nil {
-            |       return nil, err
-            |   }
-            |
-            |   $deleteStatements
-            |
-            |   return json.Marshal(target)
-            """.trimMargin()
-        }
-
-        return """
-        |// MarshalJSON override to set the discriminator value or remove
-        |// optional nil slices
-        |func (obj $name) MarshalJSON() ([]byte, error) {
-        |    type Alias $name
-        |    $funcBody
-        |}
-        """.trimMargin()
-    }
-
-    fun ObjectType.renderUnmarshalFuncFields(defaultRetval: String = ""): String {
-        val retval = if (defaultRetval.isNotEmpty()) "$defaultRetval, err" else "err"
-        return allProperties
-                .filter {
-                    val type = it.type
-                    when (type) {
-                        is ArrayType -> {
-                            type.items.isDiscriminated()
-                        }
-
-                        is ObjectType -> type.isDiscriminated()
-                        else -> false
-                    }
-                }
-                .map {
-                    val attrName = it.name.exportName()
-                    val type = it.type
-                    when (type) {
-                        is ArrayType -> {
-                            val typeName = type.items.name.exportName()
-                            """
-                        |for i := range obj.$attrName {
-                        |    var err error
-                        |    obj.$attrName[i], err = mapDiscriminator$typeName(obj.$attrName[i])
-                        |    if err != nil {
-                        |        return $retval
-                        |    }
-                        |}
-                        """.trimMargin()
-                        }
-
-                        is ObjectType -> {
-                            val typeName = type.name.exportName()
-                            """
-                        |if obj.$attrName != nil {
-                        |    var err error
-                        |    obj.$attrName, err = mapDiscriminator$typeName(obj.$attrName)
-                        |    if err != nil {
-                        |        return $retval
-                        |    }
-                        |}
-                        """.trimMargin()
-                        }
-
-                        else -> ""
-                    }
-                }
-                .joinToString("\n")
-    }
-
-    fun ObjectType.renderUnmarshalFunc(): String {
-        val fieldHandlers = this.renderUnmarshalFuncFields()
-        return """
-        |// UnmarshalJSON override to deserialize correct attribute types based
-        |// on the discriminator value
-        |func (obj *${name.exportName()}) UnmarshalJSON(data []byte) error {
-        |    type Alias ${name.exportName()}
-        |    if err := json.Unmarshal(data, (*Alias)(obj)); err != nil {
-        |        return err
-        |    }
-        |    $fieldHandlers
-        |    return nil
-        |}
-        """.trimMargin()
-    }
-
-    fun ObjectType.renderDiscriminatorMapper(): String {
-
-        val caseStatements = allAnyTypes.getTypeInheritance(this)
+    private fun ObjectType.renderSubtypeEnumStructs(): String {
+        return this.namedSubTypes()
                 .filterIsInstance<ObjectType>()
                 .filter { !it.discriminatorValue.isNullOrEmpty() }
                 .map {
-                    val extraAttrs = it.renderUnmarshalFuncFields("nil")
                     """
-            |   case "${it.discriminatorValue}":
-            |       obj := ${it.name}{}
-            |       if err := decodeStruct(input, &obj); err != nil {
-            |           return nil, err
-            |       }
-            |       <$extraAttrs>
-            |       return obj, nil
-            """.trimMargin()
+                    |#[serde(rename = "${it.discriminatorValue}")]
+                    |${it.name.exportName()} {
+                    |  <${it.renderStructFields()}>
+                    |}
+                    """.trimMargin()
                 }
-                .joinToString("\n")
-
-        return """
-            |func mapDiscriminator$name(input interface{}) ($name, error) {
-            |    var discriminator string
-            |    if data, ok := input.(map[string]interface{}); ok {
-            |        discriminator, ok = data["${this.discriminator()}"].(string)
-            |        if !ok {
-            |            return nil, errors.New("error processing discriminator field '${this.discriminator()}'")
-            |        }
-            |    } else {
-            |        return nil, errors.New("invalid data")
-            |    }
-            |
-            |    switch discriminator {
-            |    $caseStatements
-            |    }
-            |    return nil, nil
-            |}
-        """.trimMargin()
+                .joinToString(",\n")
     }
 
     // Renders the attribute of this model as type annotations.
-    fun ObjectType.renderStructFields(): String {
+    private fun ObjectType.renderStructFields(pubFields: Boolean = false): String {
+        val pubPrefix = when(pubFields) {
+            true -> "pub "
+            else -> ""
+        }
         return rustStructFields(true)
                 .map {
                     val comment: String = it.type.toLineComment().escapeAll()
-                    val name = it.name
+
+                    val name = when(it.pattern != null) {
+                        true -> "value"
+                        else -> it.name
+                    }
 
                     if (it.required) {
                         """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
-                    |${name.exportName()}: ${it.type.renderTypeExpr()}""".trimMargin()
+                    |$pubPrefix${name.rustName()}: ${it.type.renderTypeExpr()}""".trimMargin()
                     } else {
                         val type = it.type
 
                         """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
-                    |${name.exportName()}: Option\<${type.renderTypeExpr()}\>""".trimMargin()
+                    |$pubPrefix${name.rustName()}: Option\<${type.renderTypeExpr()}\>""".trimMargin()
                     }
                 }
                 .joinToString(",\n")
@@ -390,24 +226,24 @@ class RustFileProducer constructor(
             is VrapEnumType ->
                 return """
                 |<${toBlockComment().escapeAll()}>
-                |type ${vrapType.simpleClassName.exportName()} string
-                |
-                |<${this.renderEnumValues(vrapType.simpleClassName)}>
-                |
+                |#[derive(Serialize, Deserialize)]
+                |pub enum ${vrapType.simpleClassName.exportName()} {
+                |  <${this.renderEnumValues()}>
+                |}
                 """.trimMargin()
 
             is VrapScalarType -> """
-                |type ${this.name} = ${vrapType.scalarType}
+                |type ${this.name} = ${vrapType.scalarType.rustName()};
             """.trimMargin()
 
             else -> ""
         }
     }
 
-    private fun StringType.renderEnumValues(enumName: String): String {
+    private fun StringType.renderEnumValues(): String {
         return this.enumValues()
-                .map { "${enumName}${it.exportName()} $enumName = \"$it\"" }
-                .joinToString(prefix = "const (", separator = "\n", postfix = ")")
+                .map { "#[serde(rename = \"${it}\")]\n${it.rustEnumName()}" }
+                .joinToString(",\n")
     }
 
     private fun StringType.enumValues() = enum?.filter { it is StringInstance }

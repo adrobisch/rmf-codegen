@@ -44,7 +44,7 @@ class FileGenerator constructor(val fileProducers: Set<FileProducer>): CodeGener
         LOGGER.info("generating files with " + this.javaClass.simpleName)
         templateFiles.add(Flowable.fromIterable(fileProducers).flatMap { Flowable.fromIterable(it.produceFiles()) })
 
-        return templateFiles;
+        return templateFiles
     }
 }
 
