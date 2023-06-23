@@ -1,6 +1,7 @@
 package io.vrap.codegen.languages.rust
 
 import io.vrap.codegen.languages.extensions.ExtensionsBase
+import io.vrap.codegen.languages.extensions.isPatternProperty
 import io.vrap.rmf.codegen.types.*
 import io.vrap.rmf.raml.model.types.*
 import org.eclipse.emf.ecore.EObject
@@ -22,6 +23,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                 }
                 return oneOf[0].renderTypeExpr()
             }
+
             is IntersectionType -> allOf.map { it.renderTypeExpr() }.joinToString(" : ")
             is NilType -> "None"
             else -> toVrapType().rustTypeName()
@@ -50,17 +52,6 @@ interface RustObjectTypeExtensions : ExtensionsBase {
         }
     }
 
-    private fun ObjectType.getTypeDependencies(): List<VrapType> {
-        return this.allProperties
-            .map { it.type }
-            .flatMap { if (it is UnionType) it.oneOf else Collections.singletonList(it) }
-            .filterNotNull()
-            .map { it.toVrapType() }
-            .map { it.flattenVrapType() }
-            .filterNotNull()
-            .filter { it !is VrapScalarType }
-    }
-
     fun EObject?.toVrapType(): VrapType {
         val vrapType = if (this != null) vrapTypeProvider.doSwitch(this) else VrapNilType()
         return vrapType.createRustVrapType()
@@ -71,12 +62,15 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             is VrapObjectType -> {
                 VrapObjectType(`package` = this.`package`.rustModuleFileName(), simpleClassName = this.simpleClassName)
             }
+
             is VrapEnumType -> {
                 VrapEnumType(`package` = this.`package`.rustModuleFileName(), simpleClassName = this.simpleClassName)
             }
+
             is VrapArrayType -> {
                 VrapArrayType(itemType = this.itemType.createRustVrapType())
             }
+
             else -> this
         }
     }
@@ -94,13 +88,37 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                             is VrapEnumType -> it
                             else -> null
                         }
+
                     else -> null
                 }
             }
             .filterNotNull()
     }
 
-    fun List<VrapType>.getImportsForModelVrapTypes(moduleName: String): List<String> {
+    fun List<AnyType>.getImportsForModule(moduleName: String): List<String> {
+        return this
+            .filter { it is ObjectType }
+            .map { it as ObjectType }
+            .flatMap { it.getDependencies() }
+            .getImportsForModelVrapTypes(moduleName)
+    }
+
+    private fun ObjectType.getDependencies(): List<VrapType> {
+        var dependentTypes = this.allProperties
+            .map { it.type }
+            .plus(subTypes.plus(subTypes.flatMap { it.subTypes }).distinctBy { it.name })
+            .plus(type)
+            .flatMap { if (it is UnionType) it.oneOf else Collections.singletonList(it) }
+            .filterNotNull()
+
+        return dependentTypes
+            .map { it.toVrapType() }
+            .map { it.flattenVrapType() }
+            .filterNotNull()
+            .filter { it !is VrapScalarType }
+    }
+
+    private fun List<VrapType>.getImportsForModelVrapTypes(moduleName: String): List<String> {
         return this
             .map { it.flattenVrapType() }
             .distinct()
@@ -121,7 +139,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             .toSortedMap()
             .map {
                 val allImportedClasses = it.value.map { it.simpleRustName() }.sorted().joinToString(", ")
-                "from ${it.key.toRelativePackageName(moduleName)} import $allImportedClasses"
+                "crate::${it.key}::{$allImportedClasses}"
             }
     }
 
@@ -134,9 +152,9 @@ interface RustObjectTypeExtensions : ExtensionsBase {
         }
         return props.filter {
             (
-                (discriminator() == null || it.name != discriminator()) ||
-                    (it.name == discriminator() && discriminatorValue == null)
-                )
+                    (discriminator() == null || it.name != discriminator()) ||
+                            (it.name == discriminator() && discriminatorValue == null)
+                    )
         }
     }
 
@@ -173,13 +191,13 @@ interface RustObjectTypeExtensions : ExtensionsBase {
     }
 
     fun ObjectType.isMap(): Boolean {
-
         if (this.type != null && this.type.getAnnotation("asMap") != null) {
             return true
         }
         if (this.getAnnotation("asMap") != null) {
             return true
         }
-        return false
+
+        return allProperties.all { it.isPatternProperty() }
     }
 }

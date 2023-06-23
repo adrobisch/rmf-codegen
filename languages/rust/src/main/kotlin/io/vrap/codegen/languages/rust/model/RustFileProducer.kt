@@ -17,24 +17,24 @@ import io.vrap.rmf.codegen.types.VrapTypeProvider
 import io.vrap.rmf.raml.model.types.*
 
 class RustFileProducer constructor(
-        override val vrapTypeProvider: VrapTypeProvider,
-        @AllAnyTypes val allAnyTypes: List<AnyType>,
-        @BasePackageName val basePackageName: String
+    override val vrapTypeProvider: VrapTypeProvider,
+    @AllAnyTypes val allAnyTypes: List<AnyType>,
+    @BasePackageName val basePackageName: String
 ) : RustObjectTypeExtensions, FileProducer {
 
     val modules =
-            allAnyTypes
-                    .filter { it is ObjectType || (it is StringType && it.pattern == null) }
-                    .groupBy {
-                        it.moduleName()
-                    }
+        allAnyTypes
+            .filter { it is ObjectType || (it is StringType && it.pattern == null) }
+            .groupBy {
+                it.moduleName()
+            }
 
     override fun produceFiles(): List<TemplateFile> {
         return modules
-                .map { entry: Map.Entry<String, List<AnyType>> ->
-                    buildModule(entry.key, entry.value)
-                }
-                .toList() + buildCargoToml() + buildLibRs()
+            .map { entry: Map.Entry<String, List<AnyType>> ->
+                buildModule(entry.key, entry.value)
+            }
+            .toList() + buildCargoToml() + buildLibRs()
     }
 
     private fun buildLibRs(): TemplateFile {
@@ -60,16 +60,12 @@ chrono = { version = "0.4", features = ["serde"] }
     }
 
     private fun buildModule(moduleName: String, types: List<AnyType>): TemplateFile {
-        var sortedTypes = types.sortedByTopology(AnyType::getSuperTypes).filter {
-            when (it) {
-                is ObjectType -> it.discriminatorValue == null// only get super types of discrimiated types
-                else -> true
+        val sortedTypes = types.sortedByTopology(AnyType::getSuperTypes)
+
+        val modules = getImports(moduleName, sortedTypes)
+            .map {
+                "use $it;"
             }
-        }
-        val modules = getImports(sortedTypes)
-                .map {
-                    "use $it;"
-                }
 
         val importExpr = if (modules.size > 0) modules.joinToString(separator = "\n") else ""
 
@@ -81,7 +77,7 @@ chrono = { version = "0.4", features = ["serde"] }
            |${sortedTypes.map { it.renderAnyType() }.joinToString(separator = "\n")}
        """.trimMargin().keepIndentation()
 
-        var filename = moduleName.rustModuleFileName()
+        val filename = moduleName.rustModuleFileName()
         return TemplateFile(content, "src/" + filename + ".rs")
     }
 
@@ -93,56 +89,22 @@ chrono = { version = "0.4", features = ["serde"] }
         }
     }
 
-    private fun getImports(types: List<AnyType>): List<String> {
-        val objects = types.filterIsInstance<ObjectType>()
+    private fun getImports(moduleName: String, types: List<AnyType>): List<String> {
+        val commonImports = listOf(
+            "chrono::prelude::*",
+            "std::collections::HashMap"
+        )
 
-        return objects
-                .filter { it.requiresJsonModule() }
-                .map {
-                    "serde::{Deserialize, Serialize}"
-                }
-                .plus("chrono::prelude::*")
-                .plus("std::collections::HashMap")
-                .distinct()
-    }
-
-    private fun ObjectType.requiresJsonModule(): Boolean {
-        if (allProperties.all { it.isPatternProperty() }) {
-            return false
-        } else if (this.isDiscriminated()) {
-            return false
-        } else {
-            if (allProperties.any { it.type is ArrayType && !it.required }) {
-                return true
-            }
-            if (
-                    allProperties
-                            .map { it.type }
-                            .any {
-                                when (it) {
-                                    is ArrayType -> it.items.isDiscriminated()
-                                    is ObjectType -> it.isDiscriminated()
-                                    else -> false
-                                }
-                            }
-            ) {
-                return true
-            }
-            if (this.discriminatorValue != null) {
-                return true
-            }
-        }
-        return false
+        return listOf("serde::{Deserialize, Serialize}").plus(commonImports).plus(types.getImportsForModule(moduleName))
     }
 
     private fun ObjectType.renderObjectType(): String {
-        val isMap = allProperties.all { it.isPatternProperty() }
-        if (isMap) {
+        if (this.isMap()) {
             val valueType = if (allProperties.size > 0) allProperties[0].type.renderTypeExpr() else "trait"
 
             return """
             |<${toBlockComment().escapeAll()}>
-            |type $name = HashMap\<String, $valueType\>;
+            |pub type $name = HashMap\<String, $valueType\>;
             """.trimMargin()
         } else if (this.isDiscriminated()) {
             val interfaceExpr = """
@@ -174,49 +136,49 @@ chrono = { version = "0.4", features = ["serde"] }
 
     private fun ObjectType.renderSubtypeEnumStructs(): String {
         return this.namedSubTypes()
-                .filterIsInstance<ObjectType>()
-                .filter { !it.discriminatorValue.isNullOrEmpty() }
-                .map {
-                    """
+            .filterIsInstance<ObjectType>()
+            .filter { !it.discriminatorValue.isNullOrEmpty() }
+            .map {
+                """
                     |#[serde(rename = "${it.discriminatorValue}")]
                     |${it.name.exportName()} {
                     |  <${it.renderStructFields()}>
                     |}
                     """.trimMargin()
-                }
-                .joinToString(",\n")
+            }
+            .joinToString(",\n")
     }
 
     // Renders the attribute of this model as type annotations.
     private fun ObjectType.renderStructFields(pubFields: Boolean = false): String {
-        val pubPrefix = when(pubFields) {
+        val pubPrefix = when (pubFields) {
             true -> "pub "
             else -> ""
         }
         return rustStructFields(true)
-                .map {
-                    val comment: String = it.type.toLineComment().escapeAll()
+            .map {
+                val comment: String = it.type.toLineComment().escapeAll()
 
-                    val name = when(it.pattern != null) {
-                        true -> "value"
-                        else -> it.name
-                    }
+                val name = when (it.pattern != null) {
+                    true -> "value"
+                    else -> it.name
+                }
 
-                    if (it.required) {
-                        """
+                if (it.required) {
+                    """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
                     |$pubPrefix${name.rustName()}: ${it.type.renderTypeExpr()}""".trimMargin()
-                    } else {
-                        val type = it.type
+                } else {
+                    val type = it.type
 
-                        """
+                    """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
                     |$pubPrefix${name.rustName()}: Option\<${type.renderTypeExpr()}\>""".trimMargin()
-                    }
                 }
-                .joinToString(",\n")
+            }
+            .joinToString(",\n")
     }
 
     private fun StringType.renderStringType(): String {
@@ -233,7 +195,7 @@ chrono = { version = "0.4", features = ["serde"] }
                 """.trimMargin()
 
             is VrapScalarType -> """
-                |type ${this.name} = ${vrapType.scalarType.rustName()};
+                |pub type ${this.name} = ${vrapType.scalarType.rustName()};
             """.trimMargin()
 
             else -> ""
@@ -242,11 +204,11 @@ chrono = { version = "0.4", features = ["serde"] }
 
     private fun StringType.renderEnumValues(): String {
         return this.enumValues()
-                .map { "#[serde(rename = \"${it}\")]\n${it.rustEnumName()}" }
-                .joinToString(",\n")
+            .map { "#[serde(rename = \"${it}\")]\n${it.rustEnumName()}" }
+            .joinToString(",\n")
     }
 
     private fun StringType.enumValues() = enum?.filter { it is StringInstance }
-            ?.map { (it as StringInstance).value }
-            ?.filterNotNull() ?: listOf()
+        ?.map { (it as StringInstance).value }
+        ?.filterNotNull() ?: listOf()
 }
