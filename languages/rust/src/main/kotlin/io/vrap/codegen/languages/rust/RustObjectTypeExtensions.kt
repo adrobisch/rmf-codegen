@@ -6,11 +6,47 @@ import io.vrap.rmf.codegen.types.*
 import io.vrap.rmf.raml.model.types.*
 import org.eclipse.emf.ecore.EObject
 import java.util.*
+import kotlin.collections.HashMap
 
 interface RustObjectTypeExtensions : ExtensionsBase {
+    fun isRecursive(findObjectType: ObjectType): Boolean {
+        val typesToCheck = Stack<AnyType>()
+        val visited = HashMap<AnyType, Boolean>()
+        visited[findObjectType] = true
+
+        findObjectType.allProperties.forEach { typesToCheck.push(it.type) }
+
+        while (!typesToCheck.isEmpty()) {
+            val next = typesToCheck.pop() ?: continue
+
+            if (visited[next] == true) {
+                continue
+            } else {
+                visited[next] = true
+            }
+
+            if (next.toVrapType() == findObjectType.toVrapType()) {
+                return true
+            }
+
+            when (next) {
+                is ObjectType -> next.allProperties.forEach { typesToCheck.push(it.type) }
+            }
+        }
+        return false
+    }
 
     fun AnyType.renderTypeExpr(): String {
         return when (this) {
+            is ObjectType -> {
+                val typeName = toVrapType().rustTypeName()
+
+                if(isRecursive(this)) {
+                    return "Box\\<${typeName}\\>"
+                } else {
+                    return typeName
+                }
+            }
             is UnionType -> {
                 // Go has no concept of unions so we look for the shared common
                 // type. If none found we should use interface{}
@@ -19,9 +55,9 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                     if (common != null) {
                         return common.renderTypeExpr()
                     }
-                    return "trait"
+                    return "Box<dyn Any>"
                 }
-                return oneOf[0].renderTypeExpr()
+                return oneOf.first().renderTypeExpr()
             }
 
             is IntersectionType -> allOf.map { it.renderTypeExpr() }.joinToString(" : ")
@@ -36,10 +72,22 @@ interface RustObjectTypeExtensions : ExtensionsBase {
         }.filterNotNull()
 
         if (baseTypes.isEmpty()) return null
-        if (baseTypes.size > 1) {
-            return commonType(baseTypes)
+        else if (baseTypes.size == 1) {
+            return baseTypes.first()
         }
-        return baseTypes[0]
+
+        val first = baseTypes.first()
+        var same = true
+        baseTypes.forEach {
+            if (!it.equals(first))
+                same = false
+        }
+
+        return if (same) {
+            first
+        } else {
+            commonType(baseTypes)
+        }
     }
 
     fun AnyType.moduleName(): String {
@@ -108,7 +156,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             .map { it.type }
             .plus(subTypes.plus(subTypes.flatMap { it.subTypes }).distinctBy { it.name })
             .plus(type)
-            .flatMap { if (it is UnionType) it.oneOf else Collections.singletonList(it) }
+            .flatMap { if (it is UnionType) Collections.singletonList(commonType(it.oneOf)).filterNotNull() else Collections.singletonList(it) }
             .filterNotNull()
 
         return dependentTypes
@@ -177,17 +225,6 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             return true
         }
         return false
-    }
-
-    fun ObjectType.isErrorObject(): Boolean {
-        if (!name.lowercase().contains("error")) {
-            return false
-        }
-
-        return rustStructFields(true)
-            .any {
-                it.type is StringType && it.name.lowercase() == "message"
-            }
     }
 
     fun ObjectType.isMap(): Boolean {

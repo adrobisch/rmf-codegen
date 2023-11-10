@@ -19,7 +19,7 @@ fun String.rustName(): String {
     if (this == "type") {
         return "type_hint"
     }
-    return StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(this.replace(".", "_"))
+    return snakeCase()
 }
 
 fun String.rustEnumName(): String {

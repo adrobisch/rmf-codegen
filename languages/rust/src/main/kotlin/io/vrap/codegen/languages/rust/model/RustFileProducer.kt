@@ -100,7 +100,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
     private fun ObjectType.renderObjectType(): String {
         if (this.isMap()) {
-            val valueType = if (allProperties.size > 0) allProperties[0].type.renderTypeExpr() else "trait"
+            val valueType = if (allProperties.size > 0) allProperties.first().type.renderTypeExpr() else "serde_json::Value"
 
             return """
             |<${toBlockComment().escapeAll()}>
@@ -195,7 +195,7 @@ chrono = { version = "0.4", features = ["serde"] }
                 """.trimMargin()
 
             is VrapScalarType -> """
-                |pub type ${this.name} = ${vrapType.scalarType.rustName()};
+                |pub type ${this.name} = ${vrapType.rustTypeName()};
             """.trimMargin()
 
             else -> ""
