@@ -100,7 +100,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
     private fun ObjectType.renderObjectType(): String {
         if (this.isMap()) {
-            val valueType = if (allProperties.size > 0) allProperties.first().type.renderTypeExpr() else "serde_json::Value"
+            val valueType = if (allProperties.size > 0) allProperties.first().type.renderTypeExpr(listOf()) else "serde_json::Value"
 
             return """
             |<${toBlockComment().escapeAll()}>
@@ -151,6 +151,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
     // Renders the attribute of this model as type annotations.
     private fun ObjectType.renderStructFields(pubFields: Boolean = false): String {
+        val currentType = this
         val pubPrefix = when (pubFields) {
             true -> "pub "
             else -> ""
@@ -168,14 +169,14 @@ chrono = { version = "0.4", features = ["serde"] }
                     """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
-                    |$pubPrefix${name.rustName()}: ${it.type.renderTypeExpr()}""".trimMargin()
+                    |$pubPrefix${name.rustName()}: ${it.type.renderTypeExpr(listOf(currentType))}""".trimMargin()
                 } else {
                     val type = it.type
 
                     """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
-                    |$pubPrefix${name.rustName()}: Option\<${type.renderTypeExpr()}\>""".trimMargin()
+                    |$pubPrefix${name.rustName()}: Option\<${type.renderTypeExpr(listOf(currentType))}\>""".trimMargin()
                 }
             }
             .joinToString(",\n")

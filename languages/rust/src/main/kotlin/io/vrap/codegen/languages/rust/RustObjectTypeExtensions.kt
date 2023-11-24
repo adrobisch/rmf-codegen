@@ -9,7 +9,11 @@ import java.util.*
 import kotlin.collections.HashMap
 
 interface RustObjectTypeExtensions : ExtensionsBase {
-    fun isRecursive(findObjectType: ObjectType): Boolean {
+    fun isRecursive(findObjectType: ObjectType, contextTypes: List<ObjectType>): Boolean {
+        if (contextTypes.find { it.toVrapType() == findObjectType.toVrapType() } !== null) {
+            return true
+        }
+
         val typesToCheck = Stack<AnyType>()
         val visited = HashMap<AnyType, Boolean>()
         visited[findObjectType] = true
@@ -36,12 +40,12 @@ interface RustObjectTypeExtensions : ExtensionsBase {
         return false
     }
 
-    fun AnyType.renderTypeExpr(): String {
+    fun AnyType.renderTypeExpr(contextTypes: List<ObjectType> = listOf()): String {
         return when (this) {
             is ObjectType -> {
                 val typeName = toVrapType().rustTypeName()
 
-                if(isRecursive(this)) {
+                if(isRecursive(this, contextTypes)) {
                     return "Box\\<${typeName}\\>"
                 } else {
                     return typeName
@@ -121,26 +125,6 @@ interface RustObjectTypeExtensions : ExtensionsBase {
 
             else -> this
         }
-    }
-
-    fun List<AnyType>.getEnumVrapTypes(): List<VrapType> {
-        return this
-            .filterIsInstance<ObjectType>()
-            .flatMap { it.allProperties }
-            .map { it.type.toVrapType() }
-            .map {
-                when (it) {
-                    is VrapEnumType -> it
-                    is VrapArrayType ->
-                        when (it.itemType) {
-                            is VrapEnumType -> it
-                            else -> null
-                        }
-
-                    else -> null
-                }
-            }
-            .filterNotNull()
     }
 
     fun List<AnyType>.getImportsForModule(moduleName: String): List<String> {
