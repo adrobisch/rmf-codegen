@@ -157,6 +157,12 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             listOf()
         }
 
+        val mapDependency: List<VrapType> = if (this.isMap()) {
+            listOf(VrapObjectType("std::collections", "HashMap", externalType = true))
+        } else {
+            listOf()
+        }
+
         val typeDependencies: List<AnyType> = this.allProperties
             .map { it.type }
             .flatMap { if (it is UnionType) Collections.singletonList(it.commonType()).filterNotNull() else Collections.singletonList(it) }
@@ -168,6 +174,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             .filterNotNull()
             .filter { it !is VrapScalarType }
             .plus(subtypeDependencies)
+            .plus(mapDependency)
     }
 
     private fun List<VrapType>.getImportsForModelVrapTypes(moduleName: String): List<String> {
@@ -183,30 +190,34 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             }
             .groupBy {
                 when (it) {
-                    is VrapObjectType -> it.`package`
-                    is VrapEnumType -> it.`package`
+                    is VrapObjectType -> Pair(it.`package`, it.externalType)
+                    is VrapEnumType -> Pair(it.`package`, false)
                     else -> throw IllegalStateException("this case should have been filtered")
                 }
             }
-            .toSortedMap()
+            .toSortedMap { a, b -> a.first.compareTo(b.first) }
             .map { entry ->
-                val allImportedClasses = entry.value.map { it.simpleRustName() }.sorted().joinToString(", ")
-                "crate::${entry.key}::{$allImportedClasses}"
+                val allImportedClasses = if (entry.value.size == 1)
+                    entry.value.first().simpleRustName()
+                 else
+                    "{${entry.value.map { it.simpleRustName() }.sorted().joinToString(", ")}}"
+
+                val isExternal = entry.key.second
+                val prefix = if (isExternal) "" else "crate::"
+                "$prefix${entry.key.first}::$allImportedClasses"
             }
     }
 
-    fun ObjectType.rustStructFields(all: Boolean): List<Property> {
+    fun ObjectType.rustStructFields(withParentProperties: Boolean, includeDiscriminator: Boolean = false): List<Property> {
         var props: List<Property> = allProperties
 
-        if (!all) {
+        if (!withParentProperties) {
             val parentProps = getSuperProperties().map { it.name }
             props = allProperties.filter { !parentProps.contains(it.name) }
         }
+
         return props.filter {
-            (
-                    (discriminator() == null || it.name != discriminator()) ||
-                            (it.name == discriminator() && discriminatorValue == null)
-                    )
+            (includeDiscriminator || discriminator() == null || it.name != discriminator()) || (it.name == discriminator() && discriminatorValue == null)
         }
     }
 

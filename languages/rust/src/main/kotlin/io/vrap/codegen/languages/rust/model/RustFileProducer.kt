@@ -62,7 +62,7 @@ chrono = { version = "0.4", features = ["serde"] }
     private fun buildModule(moduleName: String, types: List<AnyType>): TemplateFile {
         val sortedTypes = types.sortedByTopology(AnyType::getSuperTypes)
 
-        val modules = getImports(moduleName, sortedTypes)
+        val modules = types.getImportsForModule(moduleName)
             .map {
                 "use $it;"
             }
@@ -72,6 +72,10 @@ chrono = { version = "0.4", features = ["serde"] }
         val content = """
            |$rustGeneratedComment
            |
+           |#[allow(unused_imports)]
+           |use serde::{Deserialize, Serialize};
+           |#[allow(unused_imports)]
+           |use chrono::prelude::*;
            |<$importExpr>
            |
            |${sortedTypes.map { it.renderAnyType() }.joinToString(separator = "\n")}
@@ -87,15 +91,6 @@ chrono = { version = "0.4", features = ["serde"] }
             is StringType -> this.renderStringType()
             else -> throw IllegalArgumentException("unhandled case ${this.javaClass}")
         }
-    }
-
-    private fun getImports(moduleName: String, types: List<AnyType>): List<String> {
-        val commonImports = listOf(
-            "chrono::prelude::*",
-            "std::collections::HashMap"
-        )
-
-        return listOf("serde::{Deserialize, Serialize}").plus(commonImports).plus(types.getImportsForModule(moduleName))
     }
 
     private fun ObjectType.renderObjectType(): String {
@@ -124,7 +119,7 @@ chrono = { version = "0.4", features = ["serde"] }
                 |<${toBlockComment().escapeAll()}>
                 |#[derive(Serialize, Deserialize)]
                 |pub struct ${name.exportName()} {
-                |  <${renderStructFields(true)}>
+                |  <${renderStructFields(pubFields = true, includeDiscriminator = this.type != null && this.type.isDiscriminated())}>
                 |}
             """.trimMargin()
 
@@ -150,14 +145,14 @@ chrono = { version = "0.4", features = ["serde"] }
     }
 
     // Renders the attribute of this model as type annotations.
-    private fun ObjectType.renderStructFields(pubFields: Boolean = false, contextTypes: List<ObjectType> = listOf()): String {
+    private fun ObjectType.renderStructFields(pubFields: Boolean = false, contextTypes: List<ObjectType> = listOf(), includeDiscriminator: Boolean = false): String {
         val currentType = this
         val pubPrefix = when (pubFields) {
             true -> "pub "
             else -> ""
         }
         val currentContext = contextTypes.plus(currentType)
-        return rustStructFields(true)
+        return rustStructFields(withParentProperties = true, includeDiscriminator = includeDiscriminator)
             .map {
                 val comment: String = it.type.toLineComment().escapeAll()
 

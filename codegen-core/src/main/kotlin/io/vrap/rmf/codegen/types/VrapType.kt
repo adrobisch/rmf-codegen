@@ -2,7 +2,7 @@ package io.vrap.rmf.codegen.types
 
 sealed class VrapType
 
-open class VrapObjectType(val `package` :String, val simpleClassName:String) : VrapType() {
+open class VrapObjectType(val `package`: String, val simpleClassName: String, val externalType: Boolean = false) : VrapType() {
 
 
     override fun toString(): String {
