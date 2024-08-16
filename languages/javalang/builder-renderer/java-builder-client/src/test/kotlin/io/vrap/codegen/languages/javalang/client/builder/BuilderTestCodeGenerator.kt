@@ -2,14 +2,17 @@ package io.vrap.codegen.languages.javalang.client.builder
 
 import io.vrap.codegen.languages.java.base.JavaBaseTypes
 import io.vrap.codegen.languages.javalang.client.builder.module.JavaCompleteModule
+import io.vrap.codegen.languages.javalang.client.builder.predicates.JavaQueryPredicateModule
 import io.vrap.codegen.languages.javalang.client.builder.test.JavaTestModule
 
 import io.vrap.rmf.codegen.CodeGeneratorConfig
 import io.vrap.rmf.codegen.di.RamlApiProvider
 import io.vrap.rmf.codegen.di.RamlGeneratorComponent
 import io.vrap.rmf.codegen.di.RamlGeneratorModule
+import io.vrap.rmf.codegen.io.MemoryDataSink
 import io.vrap.rmf.codegen.types.VrapObjectType
 import io.vrap.rmf.codegen.types.VrapType
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
@@ -34,11 +37,13 @@ class BuilderTestCodeGenerator {
          * */
         private val generatedCodePath = System.getenv("GENERATED_CODE_PATH")
         private val generatedTestCodePath = System.getenv("GENERATED_TEST_CODE_PATH")
+        private val generatedPredicateCodePath = System.getenv("GENERATED_PREDICATE_CODE_PATH")
         private val generatedImporterCodePath = System.getenv("GENERATED_IMPORT_API_CODE_PATH")
         private val apiPath : Path = Paths.get(if (userProvidedPath == null) "../../../../api-spec/api.raml" else userProvidedPath)
         private val importApiPath : Path = Paths.get(if (importApiProvidedPath == null) "../../../../api-spec/api.raml" else importApiProvidedPath)
         private val outputFolder : Path = Paths.get(if (generatedCodePath == null) "build/gensrc/main/java-generated" else generatedCodePath)
-        private val testOutputFolder : Path = Paths.get(if (generatedCodePath == null) "build/gensrc/test/java-generated" else generatedTestCodePath)
+        private val testOutputFolder : Path = Paths.get(if (generatedTestCodePath == null) "build/gensrc/test/java-generated" else generatedTestCodePath)
+        private val predicateOutputFolder : Path = Paths.get(if (generatedPredicateCodePath == null) "build/gensrc/main/java-predicates-generated" else generatedPredicateCodePath)
 
         val apiProvider: RamlApiProvider = RamlApiProvider(apiPath)
         val importApiProvider: RamlApiProvider = RamlApiProvider(importApiPath)
@@ -82,7 +87,10 @@ class BuilderTestCodeGenerator {
 
     @Test
     fun generateJavaCompleteModule() {
-        val typeMapping = mapOf(Pair("LocalizedString", "com.commercetools.api.models.common.LocalizedString"))
+        val typeMapping = mapOf(
+            Pair("LocalizedString", "com.commercetools.api.models.common.LocalizedString"),
+            Pair("Money", "com.commercetools.api.models.common.Money")
+        )
         val customTypeMapping = typeMapping.map { it.key to mapStringClass(it.value)}.toMap()
         val generatorConfig = CodeGeneratorConfig(basePackageName = baseBackage, outputFolder = outputFolder, customTypeMapping = customTypeMapping)
         val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JavaBaseTypes)
@@ -93,6 +101,16 @@ class BuilderTestCodeGenerator {
         val generatorTestModule = RamlGeneratorModule(apiProvider, generatorTestConfig, JavaBaseTypes)
         val generatorTestComponent = RamlGeneratorComponent(generatorTestModule, JavaTestModule)
         generatorTestComponent.generateFiles()
+
+        val predicateTypeMapping = mapOf(
+            Pair("LocalizedString", "com.commercetools.api.models.common.LocalizedString"),
+        )
+        val customPredicateTypeMapping = predicateTypeMapping.map { it.key to mapStringClass(it.value)}.toMap()
+
+        val generatorPredicateConfig = CodeGeneratorConfig(basePackageName = baseBackage, outputFolder = predicateOutputFolder, customTypeMapping = customPredicateTypeMapping)
+        val generatorPredicateModule = RamlGeneratorModule(apiProvider, generatorPredicateConfig, JavaBaseTypes)
+        val generatorPredicateComponent = RamlGeneratorComponent(generatorPredicateModule, JavaQueryPredicateModule)
+        generatorPredicateComponent.generateFiles()
     }
 
     @Disabled
@@ -125,5 +143,23 @@ class BuilderTestCodeGenerator {
 
         Assertions.assertEquals(correctSimpleTypeClass, generatedSimleTypeClass)
         Assertions.assertEquals(correctSimpleTypeInterface, generatedSimpleTypeInterface)
+    }
+
+    @Test
+    fun generateHtmlLinksToDocs() {
+        val generatorConfig = CodeGeneratorConfig(
+                basePackageName = "com/commercetools/importer",
+                outputFolder = Paths.get("build/gensrc"),
+                inlineExamples = true
+        )
+
+        val apiProvider = RamlApiProvider(Paths.get("src/test/resources/html-link.raml"))
+
+        val dataSink = MemoryDataSink()
+        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JavaBaseTypes, dataSink = dataSink)
+        val generatorComponent = RamlGeneratorComponent(generatorModule, JavaCompleteModule)
+        generatorComponent.generateFiles()
+
+        assertThat(dataSink.files).hasSize(8)
     }
 }

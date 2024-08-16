@@ -5,13 +5,28 @@ baseUri: http://com.foo.bar/api
 
 types:
   Test: object
+  Foo:
+    type: object
+    example:
+      {
+        "predicate": "lineItem = \"SKU\""
+      }
 /test:
     get:
        responses:
          200:
            body:
              application/json:
-               type: Test
+               type: Foo
+               example:
+                 {
+                   "predicate": "lineItem = \"SKU\""
+                 }
+         201:
+           body:
+             application/json:
+               type: string
+               example: "foo"
     post:
        body:
          application/json:
@@ -19,6 +34,34 @@ types:
            example: {
             "foo": "bar"
            }
+       headers:
+         FOO:
+           type: string
+           displayName: Foo
+           required: true
+       responses:
+         200:
+           body:
+             application/json:
+               type: Test
+    put:
+       body:
+         application/json:
+           type: Test
+           example: {
+            "foo": "bar"
+           }
+       responses:
+         200:
+           body:
+             application/json:
+               type: Test
+/foo:
+    get:
+       headers:
+         FOO:
+           type: string
+           required: true
        responses:
          200:
            body:

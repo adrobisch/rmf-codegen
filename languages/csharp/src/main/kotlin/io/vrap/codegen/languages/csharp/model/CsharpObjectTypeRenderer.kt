@@ -8,9 +8,9 @@ import io.vrap.rmf.codegen.di.BasePackageName
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.ObjectTypeRenderer
 import io.vrap.rmf.codegen.rendering.utils.keepIndentation
+import io.vrap.rmf.codegen.types.VrapArrayType
 import io.vrap.rmf.codegen.types.VrapObjectType
 import io.vrap.rmf.codegen.types.VrapTypeProvider
-import io.vrap.rmf.raml.model.resources.Resource
 import io.vrap.rmf.raml.model.types.BooleanInstance
 import io.vrap.rmf.raml.model.types.ObjectType
 import io.vrap.rmf.raml.model.types.Property
@@ -23,7 +23,7 @@ class CsharpObjectTypeRenderer constructor(override val vrapTypeProvider: VrapTy
         val vrapType = vrapTypeProvider.doSwitch(type) as VrapObjectType
 
         var content : String = """
-            |${type.usings()}
+            |${type.usings(vrapTypeProvider)}
             |
             |namespace ${vrapType.csharpPackage()}
             |{
@@ -35,7 +35,7 @@ class CsharpObjectTypeRenderer constructor(override val vrapTypeProvider: VrapTy
             |    }
             |}
             |
-        """.trimMargin().keepIndentation()
+        """.trimMargin().keepIndentation().split("\n").joinToString(separator = "\n") { it.trimEnd() }
 
         if(type.isADictionaryType())
         {
@@ -56,8 +56,9 @@ class CsharpObjectTypeRenderer constructor(override val vrapTypeProvider: VrapTy
         var property = this.properties[0]
 
         return  """
-            |${this.usings()}
+            |${this.usings(vrapTypeProvider, false, true)}
             |
+            |// ReSharper disable CheckNamespace
             |namespace ${vrapType.csharpPackage()}
             |{
             |    ${if (this.markDeprecated()) "[Obsolete(\"usage of this endpoint has been deprecated.\", false)]" else ""}
@@ -70,6 +71,7 @@ class CsharpObjectTypeRenderer constructor(override val vrapTypeProvider: VrapTy
     }
 
     private fun ObjectType.toProperties() : String = this.allProperties
+        .filterNot { it.deprecated() }
         .filterNot { property -> property.isPatternProperty() }
         .map { it.toCsharpProperty(this) }.joinToString(separator = "\n\n")
 
@@ -81,26 +83,28 @@ class CsharpObjectTypeRenderer constructor(override val vrapTypeProvider: VrapTy
         val deprecationAttr = if(this.deprecationAnnotation() == "") "" else this.deprecationAnnotation()+"\n";
 
         return """
-            |${deprecationAttr}public ${typeName}$nullableChar $propName { get; set;}
+            |${deprecationAttr}public ${typeName}$nullableChar $propName { get; set; }${if (this.type.toVrapType() is VrapArrayType) """
+            |
+            |${deprecationAttr}public IEnumerable\<${(this.type.toVrapType() as VrapArrayType).itemType.simpleName()}\>$nullableChar ${propName}Enumerable { set =\> $propName = value$nullableChar.ToList(); }""" else ""}
             """.trimMargin()
     }
 
     private fun Property.parentRequired(objectType: ObjectType): Boolean  {
-        val hasParent = objectType.type != null;
+        val hasParent = objectType.type != null
         if(hasParent)
         {
             val parent = objectType.type as ObjectType
-            return parent.allProperties.find { it.name.equals(this.name) }?.required ?: false
+            return parent.allProperties.find { it.name.equals(this.name) }?.parentRequired(parent) ?: false
         }
-        return false
+        return this.required
     }
 
     fun ObjectType.renderConstructor(className: String) : String {
         val isEmptyConstructor = this.getConstructorContentForDiscriminator() == "";
         return if(!isEmptyConstructor)
             """public ${className}()
-                |{ 
-                |   ${this.getConstructorContentForDiscriminator()}
+                |{
+                |    ${this.getConstructorContentForDiscriminator()}
                 |}"""
         else
             ""

@@ -19,10 +19,9 @@ import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.types.ArrayType
 import io.vrap.rmf.raml.model.types.FileType
 
-class GoMethodRenderer constructor(
-    private val clientConstants: ClientConstants,
-    override val vrapTypeProvider: VrapTypeProvider,
-    @BasePackageName val basePackageName: String
+class GoMethodRenderer(
+        override val vrapTypeProvider: VrapTypeProvider,
+        @BasePackageName val basePackageName: String
 ) : MethodRenderer, GoObjectTypeExtensions {
 
     override fun render(type: Method): TemplateFile {
@@ -146,11 +145,10 @@ class GoMethodRenderer constructor(
 
             if (it.isPatternProperty()) {
                 val name = it.paramName().exportName()
-                // TODO: We could validate the key against the regex
                 """
                 |for k, v := range input.$name {
                 |    for _, x := range v {
-                |        values.Set(k, x)
+                |        values.Add(k, x)
                 |    }
                 |}
                 """.trimMargin()
@@ -183,7 +181,7 @@ class GoMethodRenderer constructor(
                     |}
                     """.trimMargin()
                 } else if (it.required) {
-                    "${addStatement(it.name, "input.$name", vrapType)}"
+                    addStatement(it.name, "input.$name", vrapType)
                 } else {
                     """
                     |if (input.$name != nil) {
@@ -234,7 +232,7 @@ class GoMethodRenderer constructor(
     }
 
     private fun Method.renderFuncExecute(): String {
-        var methodReturn = if (this.returnType().toVrapType().goTypeName() != "nil")
+        val methodReturn = if (this.returnType().toVrapType().goTypeName() != "nil")
             "(result *${this.returnType().toVrapType().goTypeName()}, err error)"
         else
             "error"
@@ -292,8 +290,6 @@ class GoMethodRenderer constructor(
     }
 
     fun Method.responseHandler(): String {
-        data class Key(val className: String, val success: Boolean)
-
         val returnValue = if (this.hasReturnValue()) "nil, " else ""
         val switchStatements = this.responses
             .map {
@@ -305,42 +301,37 @@ class GoMethodRenderer constructor(
                     "nil" to statusCode
                 }
             }
-            .groupBy {
-                Key(it.first, (it.second.toInt() in (200..299)))
-            }
-            .mapValues {
-                entry ->
-                entry.value.map { it.second.toInt() }
-            }
             .map {
+                val isSuccess = it.second.toInt() in (200..299)
 
-                val statusCodes = mutableListOf<Int>()
-                statusCodes.addAll(it.value)
-
-                // Hack to work around incorrect importapi raml vs implementation
-                // if (statusCodes.contains(201) && !statusCodes.contains(200)) {
-                //     statusCodes.add(200)
-                // }
-                if (it.key.className == "nil") {
-                    if (it.key.success) {
+                if (it.first == "nil") {
+                    if (isSuccess) {
                         """
-                        |case ${statusCodes.joinToString(", ")}:
+                        |case ${it.second.toInt()}:
                         |    return ${returnValue}nil
                         """.trimMargin()
                     } else {
                         ""
                     }
                 } else {
-                    if (it.key.success) {
+                    if (isSuccess) {
                         """
-                        |case ${statusCodes.joinToString(", ")}:
+                        |case ${it.second.toInt()}:
                         |    err = json.Unmarshal(content, &result)
+                        |    if (err != nil) {
+                        |        return nil, err
+                        |    }
                         |    return result, nil
+                        """.trimMargin()
+                    } else if (it.second.toInt() == 404) {
+                        """
+                        |case ${it.second.toInt()}:
+                        |    return nil, ErrNotFound
                         """.trimMargin()
                     } else {
                         """
-                        |case ${statusCodes.joinToString(", ")}:
-                        |    errorObj := ${it.key.className}{}
+                        |case ${it.second.toInt()}:
+                        |    errorObj := ${it.first}{}
                         |    err = json.Unmarshal(content, &errorObj)
                         |    if (err != nil) {
                         |        return ${returnValue}err
@@ -361,7 +352,7 @@ class GoMethodRenderer constructor(
         |}
 	    |defer resp.Body.Close()
         |switch resp.StatusCode {
-        |    <$switchStatements>
+        |    <${switchStatements.trimEnd()}>
         |    default:
         |        result := GenericRequestError{
         |            StatusCode: resp.StatusCode,

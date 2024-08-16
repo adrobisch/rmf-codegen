@@ -7,8 +7,9 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.io.InputStream
 import java.lang.Exception
+import kotlin.io.path.exists
 
-class FileDataSink constructor(val outputFolder:Path): DataSink {
+class FileDataSink constructor(val outputFolder:Path, private val dryRun: Boolean = false): DataSink {
 
     private val generatedFiles = mutableListOf<File>()
 
@@ -47,6 +48,9 @@ class FileDataSink constructor(val outputFolder:Path): DataSink {
     }
 
     override fun postClean() {
+        if (!outputFolder.exists()) {
+            return;
+        }
         val files = FileUtils.listFiles(
                 outputFolder.toFile(),
                 TrueFileFilter.INSTANCE,
@@ -54,5 +58,9 @@ class FileDataSink constructor(val outputFolder:Path): DataSink {
         ).filterNot { generatedFiles.contains(it) }
 
         files.map { it.delete() }
+    }
+
+    override fun dryRun(): Boolean {
+        return dryRun
     }
 }

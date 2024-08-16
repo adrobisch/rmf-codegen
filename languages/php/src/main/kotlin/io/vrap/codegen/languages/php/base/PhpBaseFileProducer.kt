@@ -814,10 +814,7 @@ class PhpBaseFileProducer constructor(val api: Api, @BasePackageName val package
                     |namespace ${packagePrefix.toNamespaceName()}\Client;
                     |
                     |use ${packagePrefix.toNamespaceName()}\Exception\InvalidArgumentException;
-                    |use Cache\Adapter\Filesystem\FilesystemCachePool;
                     |use GuzzleHttp\Client;
-                    |use League\Flysystem\Adapter\Local;
-                    |use League\Flysystem\Filesystem;
                     |use Psr\Cache\CacheItemPoolInterface;
                     |use Psr\SimpleCache\CacheInterface;
                     |
@@ -2755,7 +2752,19 @@ class PhpBaseFileProducer constructor(val api: Api, @BasePackageName val package
                     |    
                     |    /** @psalm-var string */
                     |    private $!cacheKey;
-                    |
+                    |    /**
+                    |     * The constructor of the ClientCredentials class.
+                    |     *
+                    |     * @param string $!clientId
+                    |     *   The client id.
+                    |     * @param string $!clientSecret
+                    |     *   The client secret.
+                    |     * @param string $!scope
+                    |     *   Provide the scope when you want to request a specific ones for the client. 
+                    |     *   Can be omitted to use all scopes of the oauth client.
+                    |     *   Format: `<the scope name>:<the project key>`.
+                    |     *   Example: `manage_products:project1`.
+                    |     */
                     |    public function __construct(string $!clientId, string $!clientSecret, string $!scope = null)
                     |    {
                     |        $!this->clientId = $!clientId;
@@ -2835,7 +2844,7 @@ class PhpBaseFileProducer constructor(val api: Api, @BasePackageName val package
                     |        if (class_exists('Symfony\Component\Cache\Simple\FilesystemCache')) {
                     |            /** @psalm-suppress all */
                     |            /** @var CacheItemPoolInterface $!cache */
-                    |            $!cache = new FilesystemCache('', 0, getcwd() . "/cache");
+                    |            $!cache = new \Symfony\Component\Cache\Simple\FilesystemCache('', 0, getcwd() . "/cache");
                     |        } else {
                     |            /** @psalm-suppress all */
                     |            /** @var CacheItemPoolInterface $!cache */

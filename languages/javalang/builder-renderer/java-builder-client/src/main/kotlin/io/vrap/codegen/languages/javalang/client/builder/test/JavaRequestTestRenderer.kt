@@ -63,7 +63,7 @@ class JavaRequestTestRenderer constructor(override val vrapTypeProvider: VrapTyp
             |    
             |    ${if (type.methods.size > 0) """@TestTemplate
             |    @UseDataProvider("executeMethodParameters")
-            |    public void executeServerException(ClientRequestCommand<?> httpRequest) throws Exception{
+            |    public void executeServerException(HttpRequestCommand<?> httpRequest) throws Exception{
             |        Mockito.when(httpClientMock.execute(Mockito.any())).thenReturn(CompletableFuture.completedFuture(
             |                       new ApiHttpResponse<>(500, null, "".getBytes(StandardCharsets.UTF_8), "Oops!")));
             |                   
@@ -73,7 +73,7 @@ class JavaRequestTestRenderer constructor(override val vrapTypeProvider: VrapTyp
             |    
             |    ${if (type.methods.size > 0) """@TestTemplate
             |    @UseDataProvider("executeMethodParameters")
-            |    public void executeClientException(ClientRequestCommand<?> httpRequest) throws Exception{
+            |    public void executeClientException(HttpRequestCommand<?> httpRequest) throws Exception{
             |        Mockito.when(httpClientMock.execute(Mockito.any())).thenReturn(CompletableFuture.completedFuture(
             |                       new ApiHttpResponse<>(400, null, "".getBytes(StandardCharsets.UTF_8), "Oops!")));
             |                       
@@ -114,7 +114,7 @@ class JavaRequestTestRenderer constructor(override val vrapTypeProvider: VrapTyp
             |    apiRoot
             |    <<${builderChain.joinToString("\n.", ".")}>>,
             |    "${method.method}",
-            |    "/${resource.fullUri.expand(resource.fullUriParameters.map { it.name to "test_${it.name}" }.toMap()).trimStart('/')}",
+            |    "${resource.fullUri.expand(resource.fullUriParameters.map { it.name to "test_${it.name}" }.toMap()).trimStart('/')}",
             |}
         """.trimMargin().keepAngleIndent()
     }
@@ -143,7 +143,7 @@ class JavaRequestTestRenderer constructor(override val vrapTypeProvider: VrapTyp
                 |    apiRoot
                 |    <<${builderChain.joinToString("\n.", ".")}>>,
                 |    "${method.method}",
-                |    "/${resource.fullUri.expand(resource.fullUriParameters.map { it.name to "test_${it.name}" }.toMap()).trimStart('/')}?${paramName}=${queryParamValueString(paramName, parameter.type, Random(paramName.hashCode()))}",
+                |    "${resource.fullUri.expand(resource.fullUriParameters.map { it.name to "test_${it.name}" }.toMap()).trimStart('/')}?${paramName}=${queryParamValueString(paramName, parameter.type, Random(paramName.hashCode()))}",
                 |}
             """.trimMargin().keepAngleIndent()
     }
@@ -154,7 +154,14 @@ class JavaRequestTestRenderer constructor(override val vrapTypeProvider: VrapTyp
             if (bodyDef.type.isFile()) {
                 "FileTestUtils.testFileFor(${resource.toResourceName()}Test.class)"
             }
-            else {
+            else if (bodyDef.type is ObjectType) {
+                if ((bodyDef.type as ObjectType).discriminator != null) {
+                    val bodyType = if (bodyDef.type.isInlineType) { bodyDef.type.type } else bodyDef.type
+                    "${(bodyType.subTypes.first().toVrapType() as VrapObjectType).fullClassName()}.of()"
+                } else {
+                    "${(bodyDef.type.toVrapType() as VrapObjectType).fullClassName()}.of()"
+                }
+            } else {
                 "null"
             }
         } else ""

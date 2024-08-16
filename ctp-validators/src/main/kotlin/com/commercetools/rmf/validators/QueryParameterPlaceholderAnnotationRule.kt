@@ -1,13 +1,12 @@
 package com.commercetools.rmf.validators
 
 import io.vrap.rmf.raml.model.elements.NamedElement
-import io.vrap.rmf.raml.model.resources.HttpMethod
 import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.types.ObjectInstance
-import io.vrap.rmf.raml.model.util.StringCaseFormat
 import org.eclipse.emf.common.util.Diagnostic
 import java.util.ArrayList
 
+@ValidatorSet
 class QueryParameterPlaceholderAnnotationRule(severity: RuleSeverity, options: List<RuleOption>? = null) : ResourcesRule(severity, options) {
 
     private val exclude: List<String> =
@@ -19,10 +18,10 @@ class QueryParameterPlaceholderAnnotationRule(severity: RuleSeverity, options: L
         method.queryParameters.forEach { queryParameter ->
             run {
                 if (exclude.contains(queryParameter.name).not() && queryParameter.isPatternParameter()) {
-                    if (queryParameter.getAnnotation("placeholderParam") == null) {
+                    if (queryParameter.getAnnotation("placeholderParam", true) == null) {
                         validationResults.add(error(queryParameter, "Property \"{0}\" must define placeholder annotation", queryParameter.name))
                     } else {
-                        val annoValue = queryParameter.getAnnotation("placeholderParam").value;
+                        val annoValue = queryParameter.getAnnotation("placeholderParam",true).value;
                         when (annoValue) {
                             is ObjectInstance -> {
                                 if (!(annoValue.value.find { propertyValue -> propertyValue.name == "paramName" } != null && annoValue.value.find { propertyValue -> propertyValue.name == "template" } != null && annoValue.value.find { propertyValue -> propertyValue.name == "placeholder" } != null))

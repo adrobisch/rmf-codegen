@@ -1,5 +1,6 @@
 package io.vrap.codegen.languages.javalang.client.builder.module
 
+import io.vrap.codegen.languages.extensions.deprecated
 import io.vrap.codegen.languages.javalang.client.builder.model.JavaModelInterfaceRenderer
 import io.vrap.codegen.languages.javalang.client.builder.model.JavaStringTypeRenderer
 import io.vrap.codegen.languages.javalang.client.builder.model.JavaTraitRenderer
@@ -8,6 +9,7 @@ import io.vrap.codegen.languages.javalang.client.builder.producers.JavaModelClas
 import io.vrap.codegen.languages.javalang.client.builder.producers.JavaModelDraftBuilderFileProducer
 import io.vrap.codegen.languages.javalang.client.builder.requests.JavaHttpRequestRenderer
 import io.vrap.codegen.languages.javalang.client.builder.requests.JavaRequestBuilderResourceRenderer
+import io.vrap.codegen.languages.javalang.client.builder.requests.JavaStringHttpRequestRenderer
 import io.vrap.rmf.codegen.di.RamlGeneratorModule
 import io.vrap.rmf.codegen.di.Module
 
@@ -29,10 +31,11 @@ object JavaCompleteModule: Module {
             )),
             ResourceGenerator(setOf(
                     JavaRequestBuilderResourceRenderer(generatorModule.vrapTypeProvider())
-            ), generatorModule.allResources()),
+            ), generatorModule.allResources().filterNot { it.deprecated() }),
             MethodGenerator(setOf(
-                    JavaHttpRequestRenderer(generatorModule.vrapTypeProvider())
-            ), generatorModule.allResourceMethods()),
+                    JavaHttpRequestRenderer(generatorModule.vrapTypeProvider()),
+                    JavaStringHttpRequestRenderer(generatorModule.vrapTypeProvider())
+            ), generatorModule.allResourceMethods().filterNot { it.deprecated() }),
             TraitGenerator(setOf(
                     JavaTraitRenderer(generatorModule.vrapTypeProvider())
             ), generatorModule.allTraits())

@@ -5,6 +5,7 @@ package io.vrap.codegen.languages.csharp
 import io.vrap.codegen.languages.csharp.client.builder.test.CsharpTestModule
 import io.vrap.codegen.languages.csharp.modules.CsharpClientBuilderModule
 import io.vrap.codegen.languages.csharp.modules.CsharpModule
+import io.vrap.codegen.languages.csharp.predicates.CsharpQueryPredicateModule
 import io.vrap.rmf.codegen.CodeGeneratorConfig
 import io.vrap.rmf.codegen.di.RamlApiProvider
 import io.vrap.rmf.codegen.di.RamlGeneratorComponent
@@ -19,8 +20,8 @@ class TestCodeGenerator {
     companion object {
         private val generatedCodePath = System.getenv("GENERATED_CODE_PATH")
         private val userProvidedPath = System.getenv("TEST_RAML_FILE")
-        private val apiPath : Path = Paths.get(if (userProvidedPath == null) "../../api-spec/api.raml" else userProvidedPath)
-        private val outputFolder : Path = Paths.get(if (generatedCodePath == null) "build/gensrc/dotnet-generated" else generatedCodePath)
+        private val apiPath : Path = Paths.get(userProvidedPath ?: "../../api-spec/api.raml")
+        private val outputFolder : Path = Paths.get(generatedCodePath ?: "build/gensrc/dotnet-generated")
         val apiProvider: RamlApiProvider = RamlApiProvider(apiPath)
     }
 
@@ -30,6 +31,14 @@ class TestCodeGenerator {
         val generatorConfig = CodeGeneratorConfig(basePackageName = "commercetools.Sdk.Api", outputFolder = outputFolder)
         val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, CsharpBaseTypes)
         val generatorComponent = RamlGeneratorComponent(generatorModule, CsharpModule, CsharpClientBuilderModule)
+        generatorComponent.generateFiles()
+    }
+
+    @Test
+    fun generateCSharpPredicates() {
+        val generatorConfig = CodeGeneratorConfig(basePackageName = "commercetools.Sdk.Api", outputFolder = outputFolder)
+        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, CsharpBaseTypes)
+        val generatorComponent = RamlGeneratorComponent(generatorModule, CsharpQueryPredicateModule)
         generatorComponent.generateFiles()
     }
 

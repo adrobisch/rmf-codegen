@@ -1,10 +1,15 @@
 package io.vrap.rmf.codegen.cli
 
+import com.commercetools.rmf.diff.*
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.vrap.rmf.codegen.cli.diff.*
+import io.vrap.codegen.languages.extensions.getMethodName
+import io.vrap.codegen.languages.extensions.resource
+import io.vrap.codegen.languages.java.base.extensions.resourcePathList
 import io.vrap.rmf.codegen.firstUpperCase
 import io.vrap.rmf.raml.model.RamlModelBuilder
 import io.vrap.rmf.raml.model.modules.Api
+import io.vrap.rmf.raml.model.resources.Method
+import io.vrap.rmf.raml.model.resources.Resource
 import org.eclipse.emf.common.util.URI
 import picocli.CommandLine
 import java.nio.charset.StandardCharsets
@@ -12,13 +17,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.Callable
 import java.util.stream.Collectors
-
-enum class OutputFormat {
-    CLI,
-    MARKDOWN,
-    JSON,
-}
-const val ValidFormats =  "CLI, JSON, MARKDOWN"
 
 @CommandLine.Command(name = "diff", description = ["Generates a diff between two specifications"])
 class DiffSubcommand : Callable<Int> {
@@ -32,13 +30,13 @@ class DiffSubcommand : Callable<Int> {
     @CommandLine.Parameters(index = "1", description = ["Changed api file location"])
     lateinit var changedFileLocation: Path
 
-    @CommandLine.Option(names = ["-f", "--format"], description = ["Specifies the output format","Valid values: $ValidFormats"])
+    @CommandLine.Option(names = ["-f", "--format"], description = ["Specifies the output format","Valid values: ${OutputFormat.VALID_VALUES}"])
     var outputFormat: OutputFormat = OutputFormat.CLI
 
-    @CommandLine.Option(names = ["-t", "--target"], description = ["Specifies the file to write to"])
+    @CommandLine.Option(names = ["-o", "--outputTarget"], description = ["Specifies the file to write to"])
     var outputTarget: Path? = null
 
-    @CommandLine.Option(names = ["-d", "--diffs"], description = ["Diff configuration"], required = false)
+    @CommandLine.Option(names = ["-d", "--diffs"], description = ["Diff configuration"])
     var diffConfigurationFile: Path? = null
 
     @CommandLine.Option(names = ["-s", "--severity"], description = ["Check severity", "Valid values: ${CheckSeverity.VALID_VALUES}"])
@@ -49,8 +47,8 @@ class DiffSubcommand : Callable<Int> {
     }
 
     private fun diff(): Int {
-        val originalApi = readApi(originalFileLocation.toRealPath().toAbsolutePath()) ?: return 1
-        val changedApi = readApi(changedFileLocation.toRealPath().toAbsolutePath()) ?: return 1
+        val originalApi = readApi(originalFileLocation.toRealPath().toAbsolutePath())
+        val changedApi = readApi(changedFileLocation.toRealPath().toAbsolutePath())
 
         val config = diffConfigurationFile?.toFile()?.inputStream() ?: ValidateSubcommand::class.java.getResourceAsStream("/diff.xml")
 
@@ -65,11 +63,7 @@ class DiffSubcommand : Callable<Int> {
             return 0
         }
 
-        val output = when(outputFormat) {
-            OutputFormat.CLI -> CliFormatPrinter().print(diffResult)
-            OutputFormat.MARKDOWN -> MarkdownFormatPrinter().print(diffResult)
-            OutputFormat.JSON -> JsonFormatPrinter().print(diffResult)
-        }
+        val output = diagnosticPrinter(outputFormat).print(diffResult)
 
         outputTarget?.let {
             InternalLogger.info("Writing to ${it.toAbsolutePath().normalize()}")
@@ -80,37 +74,21 @@ class DiffSubcommand : Callable<Int> {
         return diffResult.any { diff -> diff.severity >= checkSeverity }.let { b -> if(b) 1 else 0 }
     }
 
-    class CliFormatPrinter {
-        fun print(diffResult: List<Diff<Any>>): String {
-            return diffResult.joinToString("\n") { "${it.message} (${it.source})" }
+    companion object {
+        fun diagnosticPrinter(printer: OutputFormat): FormatPrinter {
+            return when (printer) {
+                OutputFormat.CLI -> CliFormatPrinter()
+                OutputFormat.MARKDOWN -> MarkdownFormatPrinter()
+                OutputFormat.JAVA_MARKDOWN -> JavaMarkdownFormatPrinter()
+                OutputFormat.PHP_MARKDOWN -> PHPMarkdownFormatPrinter()
+                OutputFormat.TS_MARKDOWN -> TSMarkdownFormatPrinter()
+                OutputFormat.DOTNET_MARKDOWN -> DotNetMarkdownFormatPrinter()
+                OutputFormat.JSON -> JsonFormatPrinter()
+            }
         }
     }
 
-    class MarkdownFormatPrinter {
-        fun print(diffResult: List<Diff<Any>>): String {
-
-            val map = diffResult.groupBy { it.scope }.map { it.key to it.value.groupBy { it.diffType } }.toMap()
-
-            return map.entries.joinToString("\n\n") { scope -> """
-                |### ${scope.key.scope.firstUpperCase()}
-                |
-                |${scope.value.entries.joinToString("\n\n") { type -> """
-                |#### ${type.key.type.firstUpperCase()}
-                |
-                |${type.value.joinToString("\n") { "- ${it.message} (${it.source?.location}:${it.source?.position?.line}:${it.source?.position?.charPositionInLine})" }}
-                """.trimMargin() }}
-            """.trimMargin() }
-        }
-    }
-
-    class JsonFormatPrinter {
-        fun print(diffResult: List<Diff<Any>>): String {
-            val mapper = ObjectMapper()
-            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(diffResult)
-        }
-    }
-
-    private fun readApi(fileLocation: Path): Api? {
+    private fun readApi(fileLocation: Path): Api {
         val fileURI = URI.createURI(fileLocation.toUri().toString())
         InternalLogger.info("Reading ${fileURI.toFileString()} ...")
         val modelResult = RamlModelBuilder().buildApi(fileURI)
@@ -118,10 +96,11 @@ class DiffSubcommand : Callable<Int> {
         if (validationResults.isNotEmpty()) {
             val res = validationResults.stream().map { "$it" }.collect( Collectors.joining( "\n" ) );
             InternalLogger.error("Error(s) found validating ${fileURI.toFileString()}:\n$res")
-            return null
+            return modelResult.rootObject
         }
         InternalLogger.info("\tdone")
 
         return modelResult.rootObject
     }
+
 }

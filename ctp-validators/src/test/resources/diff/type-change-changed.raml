@@ -1,0 +1,12 @@
+#%RAML 1.0
+title: type change
+
+types:
+  Foo:
+    type: string
+  Bar:
+    type: Baz
+  Baz:
+    type: object
+  FooBaz:
+    type: Bar[]

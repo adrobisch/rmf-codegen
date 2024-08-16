@@ -2,6 +2,7 @@ package io.vrap.codegen.languages.ramldoc
 
 import io.vrap.codegen.languages.ramldoc.extensions.renderAnnotation
 import io.vrap.codegen.languages.ramldoc.extensions.toJson
+import io.vrap.codegen.languages.ramldoc.model.MarkdownModelModule
 import io.vrap.codegen.languages.ramldoc.model.RamldocBaseTypes
 import io.vrap.codegen.languages.ramldoc.model.RamldocModelModule
 import io.vrap.rmf.codegen.CodeGeneratorConfig
@@ -45,10 +46,61 @@ class TestCodeGenerator {
     }
 
     @Test
+    fun testFileTypeExample() {
+        val generatorConfig = CodeGeneratorConfig(
+                basePackageName = "com/commercetools/importer",
+                outputFolder = Paths.get("build/gensrc"),
+                inlineExamples = true
+        )
+
+        val apiProvider = RamlApiProvider(Paths.get("src/test/resources/filetype.raml"))
+
+        val dataSink = MemoryDataSink()
+        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, RamldocBaseTypes, dataSink = dataSink)
+        val generatorComponent = RamlGeneratorComponent(generatorModule, RamldocModelModule)
+        generatorComponent.generateFiles()
+
+        Assertions.assertThat(dataSink.files).hasSize(2)
+        Assertions.assertThat(dataSink.files.get("types/foo.raml")?.trim()).isEqualTo("""
+            #%RAML 1.0 DataType
+            displayName: foo
+            type: object
+            (builtinType): object
+            properties:
+              bar:
+                fileTypes:
+                  - "*.js"
+                type: file
+                (builtinType): file
+                required: true
+                (inherited): false
+        """.trimIndent())
+    }
+
+    @Test
+    fun testMarkdown() {
+        val generatorConfig = CodeGeneratorConfig(
+                basePackageName = "com/commercetools/api",
+                outputFolder = Paths.get("build/gensrc"),
+                inlineExamples = true
+        )
+
+        val dataSink = MemoryDataSink()
+        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, RamldocBaseTypes, dataSink = dataSink)
+        val generatorComponent = RamlGeneratorComponent(generatorModule, MarkdownModelModule)
+        generatorComponent.generateFiles()
+
+        Assertions.assertThat(dataSink.files).hasSize(2)
+        Assertions.assertThat(dataSink.files.get("api.md")?.trim()).isNotEmpty()
+        Assertions.assertThat(dataSink.files.get("api.jsonl")?.trim()).isNotEmpty()
+    }
+
+    @Test
     fun testCurlExample() {
         val generatorConfig = CodeGeneratorConfig(
             basePackageName = "com/commercetools/importer",
-            outputFolder = Paths.get("build/gensrc")
+            outputFolder = Paths.get("build/gensrc"),
+            inlineExamples = true
         )
 
         val apiProvider = RamlApiProvider(Paths.get("src/test/resources/curlexample.raml"))
@@ -58,7 +110,7 @@ class TestCodeGenerator {
         val generatorComponent = RamlGeneratorComponent(generatorModule, RamldocModelModule)
         generatorComponent.generateFiles()
 
-        Assertions.assertThat(dataSink.files).hasSize(4)
+        Assertions.assertThat(dataSink.files).hasSize(10)
         Assertions.assertThat(dataSink.files.get("resources/Test.raml")?.trim()).isEqualTo("""
             # Resource
             (resourceName): Test
@@ -69,13 +121,36 @@ class TestCodeGenerator {
                 200:
                   body:
                     application/json:
-                      type: Test
+                      type: Foo
                       (builtinType): object
+                      examples:
+                        default:
+                          strict: true
+                          value:
+                            {
+                              "predicate" : "lineItem = \"SKU\""
+                            }
+            
+                201:
+                  body:
+                    application/json:
+                      type: string
+                      (builtinType): string
+                      examples:
+                        default:
+                          strict: true
+                          value: "foo"
             
               (codeExamples):
                 curl: |-
-                  curl -X GET http://com.foo.bar/api/test -i 
+                  curl --get http://com.foo.bar/api/test -i
             post:
+              headers:
+                FOO:
+                  type: string
+                  (builtinType): string
+                  displayName: Foo
+                  required: true
               body:
                 application/json:
                   type: Test
@@ -83,7 +158,10 @@ class TestCodeGenerator {
                   examples:
                     default:
                       strict: true
-                      value: !include ../examples/TestPost-default.json
+                      value:
+                        {
+                          "foo" : "bar"
+                        }
             
               responses:
                 200:
@@ -94,7 +172,37 @@ class TestCodeGenerator {
             
               (codeExamples):
                 curl: |-
-                  curl -X POST http://com.foo.bar/api/test -i \
+                  curl http://com.foo.bar/api/test -i \
+                  --header 'Content-Type: application/json' \
+                  --header 'FOO: ${'$'}{FOO}' \
+                  --data-binary @- << DATA 
+                  {
+                    "foo" : "bar"
+                  }
+                  DATA
+            put:
+              body:
+                application/json:
+                  type: Test
+                  (builtinType): object
+                  examples:
+                    default:
+                      strict: true
+                      value:
+                        {
+                          "foo" : "bar"
+                        }
+            
+              responses:
+                200:
+                  body:
+                    application/json:
+                      type: Test
+                      (builtinType): object
+            
+              (codeExamples):
+                curl: |-
+                  curl -X PUT http://com.foo.bar/api/test -i \
                   --header 'Content-Type: application/json' \
                   --data-binary @- << DATA 
                   {
@@ -102,6 +210,50 @@ class TestCodeGenerator {
                   }
                   DATA
         """.trimIndent().trim())
+        Assertions.assertThat(dataSink.files.get("resources/Foo.raml")?.trim()).isEqualTo("""
+            # Resource
+            (resourceName): Foo
+            (resourcePathUri): /foo
+            
+            get:
+              headers:
+                FOO:
+                  type: string
+                  (builtinType): string
+                  required: true
+              responses:
+                200:
+                  body:
+                    application/json:
+                      type: Test
+                      (builtinType): object
+            
+              (codeExamples):
+                curl: |-
+                  curl --get http://com.foo.bar/api/foo -i \
+                  --header 'FOO: ${'$'}{FOO}'
+              """.trimIndent().trim())
+        Assertions.assertThat(dataSink.files.get("types/Foo.raml")?.trim()).isEqualTo("""
+            #%RAML 1.0 DataType
+            displayName: Foo
+            type: object
+            (builtinType): object
+            examples:
+              default:
+                strict: true
+                value:
+                  {
+                    "predicate" : "lineItem = \"SKU\""
+                  }
+            properties:
+            """.trimIndent().trim())
+        Assertions.assertThat(dataSink.files.get("types/Test.raml")?.trim()).isEqualTo("""
+            #%RAML 1.0 DataType
+            displayName: Test
+            type: object
+            (builtinType): object
+            properties:
+            """.trimIndent().trim())
     }
 
     @Test

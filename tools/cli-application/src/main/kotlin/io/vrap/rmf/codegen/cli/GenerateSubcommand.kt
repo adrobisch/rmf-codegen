@@ -5,10 +5,13 @@ import io.methvin.watcher.DirectoryWatcher
 import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.plugins.RxJavaPlugins
 import io.reactivex.rxjava3.schedulers.Schedulers
+import io.vrap.codegen.languages.bruno.model.BrunoBaseTypes
+import io.vrap.codegen.languages.bruno.model.BrunoModelModule
 import io.vrap.codegen.languages.csharp.CsharpBaseTypes
 import io.vrap.codegen.languages.csharp.client.builder.test.CsharpTestModule
 import io.vrap.codegen.languages.csharp.modules.CsharpClientBuilderModule
 import io.vrap.codegen.languages.csharp.modules.CsharpModule
+import io.vrap.codegen.languages.csharp.predicates.CsharpQueryPredicateModule
 import io.vrap.codegen.languages.java.base.JavaBaseTypes
 import io.vrap.codegen.languages.javalang.client.builder.module.JavaCompleteModule
 import io.vrap.codegen.languages.javalang.client.builder.test.JavaTestModule
@@ -32,12 +35,21 @@ import io.vrap.codegen.languages.typescript.test.TypescriptTestModule
 import io.vrap.codegen.languages.go.GoBaseTypes
 import io.vrap.codegen.languages.go.model.GoModelModule
 import io.vrap.codegen.languages.go.client.GoClientModule
+import io.vrap.codegen.languages.java.base.PlantUmlBaseTypes
+import io.vrap.codegen.languages.javalang.client.builder.predicates.JavaQueryPredicateModule
+import io.vrap.codegen.languages.javalang.plantuml.PlantUmlModule
+import io.vrap.codegen.languages.ramldoc.model.MarkdownModelModule
+import io.vrap.codegen.languages.typescript.joi.JoiBaseTypes
+import io.vrap.codegen.languages.typescript.joi.JoiModule
 import io.vrap.codegen.languages.rust.RustBaseTypes
 import io.vrap.codegen.languages.rust.model.RustModelModule
 import io.vrap.codegen.languages.rust.client.RustClientModule
 
 import io.vrap.rmf.codegen.CodeGeneratorConfig
 import io.vrap.rmf.codegen.di.*
+import io.vrap.rmf.codegen.io.DataSink
+import io.vrap.rmf.codegen.io.FileDataSink
+import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.toSeconds
 import io.vrap.rmf.codegen.types.VrapObjectType
 import io.vrap.rmf.codegen.types.VrapType
@@ -58,6 +70,7 @@ import kotlin.system.measureTimeMillis
 enum class GenerationTarget {
     JAVA_CLIENT,
     JAVA_TEST,
+    JAVA_QUERY_PREDICATES,
     TYPESCRIPT_CLIENT,
     TYPESCRIPT_TEST,
     PHP_CLIENT,
@@ -68,11 +81,16 @@ enum class GenerationTarget {
     RAML_DOC,
     CSHARP_CLIENT,
     CSHARP_TEST,
+    CSHARP_QUERY_PREDICATES,
     OAS,
     PYTHON_CLIENT,
-    RUST_CLIENT
+    PLANTUML,
+    DOC_MARKDOWN,
+    BRUNO,
+    TYPESCRIPT_JOI_VALIDATOR,
+    RUST_CLIENT,
 }
-const val ValidTargets = "JAVA_CLIENT, JAVA_TEST, TYPESCRIPT_CLIENT, TYPESCRIPT_TEST, CSHARP_CLIENT, CSHARP_TEST, PHP_CLIENT, PHP_BASE, PHP_TEST, POSTMAN, RAML_DOC, OAS, PYTHON_CLIENT"
+const val ValidTargets = "JAVA_CLIENT, JAVA_TEST, JAVA_QUERY_PREDICATES, TYPESCRIPT_CLIENT, TYPESCRIPT_TEST, CSHARP_CLIENT, CSHARP_TEST, CSHARP_QUERY_PREDICATES, PHP_CLIENT, PHP_BASE, PHP_TEST, POSTMAN, RAML_DOC, OAS, PYTHON_CLIENT, PLANTUML, DOC_MARKDOWN, BRUNO, TYPESCRIPT_JOI_VALIDATOR"
 
 @CommandLine.Command(name = "generate",description = ["Generate source code from a RAML specification."])
 class GenerateSubcommand : Callable<Int> {
@@ -101,6 +119,12 @@ class GenerateSubcommand : Callable<Int> {
     @CommandLine.Option(names = ["-w", "--watch"], description = ["Watches the files for changes"], required = false)
     var watch: Boolean = false
 
+    @CommandLine.Option(names = ["--inline-examples"], description = ["Inline the Examples to the generated RAML files"], required = false)
+    var inlineExamples: Boolean = false
+
+    @CommandLine.Option(names = ["--predicates"], description = ["Generate predicate builders"], required = false)
+    var predicateBuilders: Boolean = false
+
     @CommandLine.Option(names = ["-v", "--verbose"], description = ["If set, this would move the verbosity level to debug."], required = false)
     var verbose: Boolean = false
 
@@ -109,6 +133,9 @@ class GenerateSubcommand : Callable<Int> {
 
     @CommandLine.Option(names = ["--mappingFile"], required = false )
     var typeMappingFile: Path? = null
+
+    @CommandLine.Option(names = ["--dry-run"], description = ["Don't write to files"], required = false )
+    var dryRun: Boolean? = false
 
     @CommandLine.Parameters(index = "0",description = ["Api file location"])
     lateinit var ramlFileLocation: Path
@@ -149,7 +176,9 @@ class GenerateSubcommand : Callable<Int> {
                 clientPackage = clientPackageName,
                 outputFolder = outputFolder,
                 writeGitHash = writeGitHash,
-                customTypeMapping = customTypeMapping
+                customTypeMapping = customTypeMapping,
+                inlineExamples = inlineExamples
+
         )
 
         val res = safeRun { generate(ramlFileLocation, target, generatorConfig) }
@@ -198,48 +227,69 @@ class GenerateSubcommand : Callable<Int> {
     private fun generate(fileLocation: Path, target: GenerationTarget, generatorConfig: CodeGeneratorConfig): Int {
         val generateDuration = measureTimeMillis {
             val generatorComponent: GeneratorComponent
+            val sink = FileDataSink(generatorConfig.outputFolder, dryRun ?: false)
             if (fileLocation.toString().endsWith(".raml")) {
                 val apiProvider = RamlApiProvider(fileLocation)
                 generatorComponent = when (target) {
                     GenerationTarget.JAVA_CLIENT -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JavaBaseTypes)
-                        RamlGeneratorComponent(generatorModule, JavaCompleteModule)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JavaBaseTypes, dataSink = sink)
+                        if (predicateBuilders) {
+                            RamlGeneratorComponent(generatorModule, JavaCompleteModule, JavaQueryPredicateModule)
+                        } else {
+                            RamlGeneratorComponent(generatorModule, JavaCompleteModule)
+                        }
+                    }
+                    GenerationTarget.JAVA_QUERY_PREDICATES -> {
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JavaBaseTypes, dataSink = sink)
+                        RamlGeneratorComponent(generatorModule, JavaQueryPredicateModule)
                     }
                     GenerationTarget.JAVA_TEST -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JavaBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JavaBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, JavaTestModule)
                     }
                     GenerationTarget.TYPESCRIPT_CLIENT -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, TypeScriptBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, TypeScriptBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, TypescriptModelModule, TypescriptClientModule)
                     }
                     GenerationTarget.TYPESCRIPT_TEST -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, TypeScriptBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, TypeScriptBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, TypescriptTestModule)
                     }
+                    GenerationTarget.TYPESCRIPT_JOI_VALIDATOR -> {
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, JoiBaseTypes, dataSink = sink)
+                        RamlGeneratorComponent(generatorModule, JoiModule)
+                    }
                     GenerationTarget.PHP_CLIENT -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PhpBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PhpBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, PhpModelModule)
                     }
                     GenerationTarget.PHP_BASE -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PhpBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PhpBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, PhpBaseModule)
                     }
                     GenerationTarget.PHP_TEST -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PhpBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PhpBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, PhpTestModule)
                     }
                     GenerationTarget.CSHARP_CLIENT -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, CsharpBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, CsharpBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, CsharpModule, CsharpClientBuilderModule)
                     }
                     GenerationTarget.CSHARP_TEST -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, CsharpBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, CsharpBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, CsharpTestModule)
                     }
+                    GenerationTarget.CSHARP_QUERY_PREDICATES -> {
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, CsharpBaseTypes, dataSink = sink)
+                        RamlGeneratorComponent(generatorModule, CsharpQueryPredicateModule)
+                    }
                     GenerationTarget.POSTMAN -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PostmanBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PostmanBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, PostmanModelModule)
+                    }
+                    GenerationTarget.BRUNO -> {
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, BrunoBaseTypes, dataSink = sink)
+                        RamlGeneratorComponent(generatorModule, BrunoModelModule)
                     }
                     GenerationTarget.RAML_DOC -> {
                         val ramlConfig = CodeGeneratorConfig(
@@ -248,10 +298,36 @@ class GenerateSubcommand : Callable<Int> {
                             modelPackage = generatorConfig.modelPackage,
                             clientPackage = generatorConfig.clientPackage,
                             outputFolder = generatorConfig.outputFolder,
+                            writeGitHash = generatorConfig.writeGitHash,
+                            inlineExamples = generatorConfig.inlineExamples
+                        )
+                        val generatorModule = RamlGeneratorModule(apiProvider, ramlConfig, RamldocBaseTypes, dataSink = sink)
+                        RamlGeneratorComponent(generatorModule, RamldocModelModule)
+                    }
+                    GenerationTarget.DOC_MARKDOWN -> {
+                        val ramlConfig = CodeGeneratorConfig(
+                                sharedPackage = generatorConfig.sharedPackage,
+                                basePackageName = generatorConfig.basePackageName,
+                                modelPackage = generatorConfig.modelPackage,
+                                clientPackage = generatorConfig.clientPackage,
+                                outputFolder = generatorConfig.outputFolder,
+                                writeGitHash = generatorConfig.writeGitHash,
+                                inlineExamples = generatorConfig.inlineExamples
+                        )
+                        val generatorModule = RamlGeneratorModule(apiProvider, ramlConfig, RamldocBaseTypes, dataSink = sink)
+                        RamlGeneratorComponent(generatorModule, MarkdownModelModule)
+                    }
+                    GenerationTarget.PLANTUML -> {
+                        val ramlConfig = CodeGeneratorConfig(
+                            sharedPackage = generatorConfig.sharedPackage,
+                            basePackageName = generatorConfig.basePackageName,
+                            modelPackage = generatorConfig.modelPackage,
+                            clientPackage = generatorConfig.clientPackage,
+                            outputFolder = generatorConfig.outputFolder,
                             writeGitHash = generatorConfig.writeGitHash
                         )
-                        val generatorModule = RamlGeneratorModule(apiProvider, ramlConfig, RamldocBaseTypes)
-                        RamlGeneratorComponent(generatorModule, RamldocModelModule)
+                        val generatorModule = RamlGeneratorModule(apiProvider, ramlConfig, PlantUmlBaseTypes, dataSink = sink)
+                        RamlGeneratorComponent(generatorModule, PlantUmlModule)
                     }
                     GenerationTarget.OAS -> {
                         val ramlConfig = CodeGeneratorConfig(
@@ -262,15 +338,15 @@ class GenerateSubcommand : Callable<Int> {
                             outputFolder = generatorConfig.outputFolder,
                             writeGitHash = generatorConfig.writeGitHash
                         )
-                        val generatorModule = RamlGeneratorModule(apiProvider, ramlConfig, OasBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, ramlConfig, OasBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, OasModelModule)
                     }
                     GenerationTarget.PYTHON_CLIENT -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PythonBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, PythonBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, PythonModelModule, PythonClientModule)
                     }
                     GenerationTarget.GO_CLIENT -> {
-                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, GoBaseTypes)
+                        val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, GoBaseTypes, dataSink = sink)
                         RamlGeneratorComponent(generatorModule, GoModelModule, GoClientModule)
                     }
                     GenerationTarget.RUST_CLIENT -> {
@@ -290,7 +366,7 @@ class GenerateSubcommand : Callable<Int> {
                             outputFolder = generatorConfig.outputFolder,
                             writeGitHash = generatorConfig.writeGitHash
                         )
-                        val generatorModule = OasGeneratorModule(apiProvider, ramlConfig, RamldocBaseTypes)
+                        val generatorModule = OasGeneratorModule(apiProvider, ramlConfig, RamldocBaseTypes, dataSink = sink)
                         OasGeneratorComponent(generatorModule, RamldocModelModule)
                     }
                     else -> {

@@ -2,20 +2,16 @@ package io.vrap.codegen.languages.csharp.requests
 
 import com.google.common.collect.Lists
 import com.google.common.net.MediaType
+import io.vrap.codegen.languages.csharp.CsharpBaseTypes
 import io.vrap.codegen.languages.csharp.extensions.*
-import io.vrap.codegen.languages.extensions.EObjectExtensions
-import io.vrap.codegen.languages.extensions.resource
-import io.vrap.codegen.languages.extensions.toRequestName
+import io.vrap.codegen.languages.extensions.*
 import io.vrap.rmf.codegen.firstUpperCase
 import io.vrap.rmf.codegen.firstLowerCase
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.MethodRenderer
 import io.vrap.rmf.codegen.rendering.utils.escapeAll
 import io.vrap.rmf.codegen.rendering.utils.keepIndentation
-import io.vrap.rmf.codegen.types.VrapEnumType
-import io.vrap.rmf.codegen.types.VrapObjectType
-import io.vrap.rmf.codegen.types.VrapScalarType
-import io.vrap.rmf.codegen.types.VrapTypeProvider
+import io.vrap.rmf.codegen.types.*
 import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Trait
 import io.vrap.rmf.raml.model.resources.impl.ResourceImpl
@@ -49,25 +45,30 @@ class CsharpHttpRequestRenderer constructor(override val vrapTypeProvider: VrapT
                 type.`is`.distinctBy { it.trait.name }.map { "${it.trait.className()}<${type.toRequestName()}>".escapeAll() }
             )
             .filterNotNull()
+        val hasReturnPayload = type.hasReturnPayload();
 
         val content = """
             |using System;
+            |using System.Globalization;
             |using System.IO;
             |using System.Collections.Generic;
             |using System.Linq;
             |using System.Net;
             |using System.Net.Http;
+            |using System.Net.Http.Headers;
             |using System.Text;
             |using System.Threading.Tasks;
+            |using System.Threading;
             |using System.Text.Json;
             |using commercetools.Base.Client;
             |using commercetools.Base.Serialization;
             |${type.usings()}
             |
+            |// ReSharper disable CheckNamespace
             |namespace ${cPackage}
             |{
             |   ${if (type.markDeprecated()) "[Obsolete(\"usage of this endpoint has been deprecated.\", false)]" else ""}
-            |   public partial class ${type.toRequestName()} : ApiMethod\<${type.toRequestName()}\>, IApiMethod\<${type.toRequestName()}, ${type.csharpReturnType(vrapTypeProvider)}\>${if (implements.isNotEmpty()) ", ${implements.joinToString(", ")}" else ""} {
+            |   public partial class ${type.toRequestName()} : ApiMethod\<${type.toRequestName()}\>, IApiMethod\<${type.toRequestName()}, ${if (hasReturnPayload) type.csharpReturnType(vrapTypeProvider) else "string"}\>${if (implements.isNotEmpty()) ", ${implements.joinToString(", ")}" else ""} {
             |
             |       <${type.properties()}>
             |   
@@ -195,6 +196,9 @@ class CsharpHttpRequestRenderer constructor(override val vrapTypeProvider: VrapT
             return "$fieldName.JsonName"
         if(type == "string")
             return fieldName
+        if(type == "decimal" || type == "int" || type == "long") {
+            return "$fieldName.ToString(CultureInfo.InvariantCulture)"
+        }
         else
             return "$fieldName.ToString()"
     }
@@ -218,20 +222,51 @@ class CsharpHttpRequestRenderer constructor(override val vrapTypeProvider: VrapT
             .joinToString(separator = "\n\n")
 
     private fun QueryParameter.witherType() : String {
-        val type = this.type;
-        return when (type) {
+        return when (val type = this.type) {
             is ArrayType -> type.items.toVrapType().simpleName()
-            else -> type.toVrapType().simpleName()
+            else -> {
+                val vrapType = type.toVrapType().simpleName()
+                if (vrapType == CsharpBaseTypes.integerType.simpleName())
+                    CsharpBaseTypes.longType.simpleName()
+                else vrapType
+            }
         }
     }
 
     private fun Method.executeAndBuild() : String {
-        var executeBlock =
+        val hasReturnPayload = this.hasReturnPayload();
+        val executeBlock =
                 """
-            |public async Task\<${this.csharpReturnType(vrapTypeProvider)}\> ExecuteAsync()
+            |public async Task\<${if (hasReturnPayload) this.csharpReturnType(vrapTypeProvider) else "string"}\> ExecuteAsync(CancellationToken cancellationToken = default)
+            |{
+            |   ${if (this.hasReturnPayload()) """
+            |   var requestMessage = Build();
+            |   return await ApiHttpClient.ExecuteAsync\<${this.csharpReturnType(vrapTypeProvider)}\>(requestMessage, cancellationToken);
+            |   """ else """
+            |   return await ExecuteAsJsonAsync(cancellationToken);
+            |   """}
+            |}
+            |
+            |public async Task\<string\> ExecuteAsJsonAsync(CancellationToken cancellationToken = default)
             |{
             |   var requestMessage = Build();
-            |   return await ApiHttpClient.ExecuteAsync\<${this.csharpReturnType(vrapTypeProvider)}\>(requestMessage);
+            |   return await ApiHttpClient.ExecuteAsJsonAsync(requestMessage, cancellationToken);
+            |}
+            |
+            |public async Task\<IApiResponse\<${if (hasReturnPayload) this.csharpReturnType(vrapTypeProvider) else "string"}\>\> SendAsync(CancellationToken cancellationToken = default)
+            |{
+            |   ${if (this.hasReturnPayload()) """
+            |   var requestMessage = Build();
+            |   return await ApiHttpClient.SendAsync\<${this.csharpReturnType(vrapTypeProvider)}\>(requestMessage, cancellationToken);
+            |   """ else """
+            |   return await SendAsJsonAsync(cancellationToken);
+            |   """}
+            |}
+            |
+            |public async Task\<IApiResponse\<string\>\> SendAsJsonAsync(CancellationToken cancellationToken = default)
+            |{
+            |   var requestMessage = Build();
+            |   return await ApiHttpClient.SendAsJsonAsync(requestMessage, cancellationToken);
             |}
         """.trimMargin()
 
@@ -259,6 +294,11 @@ class CsharpHttpRequestRenderer constructor(override val vrapTypeProvider: VrapT
                     |   if ($bodyName != null && $bodyName.Length \> 0)
                     |   {
                     |       request.Content = new StreamContent($bodyName);
+                    |       if (Headers.HasHeader(ApiHttpHeaders.CONTENT_TYPE))
+                    |       {
+                    |           request.Content.Headers.ContentType =
+                    |               new MediaTypeHeaderValue(Headers.GetFirst(ApiHttpHeaders.CONTENT_TYPE));
+                    |       }
                     |   }
                     |   return request;
                     |}

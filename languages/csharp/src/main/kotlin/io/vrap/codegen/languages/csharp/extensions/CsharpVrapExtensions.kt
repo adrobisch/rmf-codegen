@@ -19,7 +19,7 @@ fun VrapType.simpleName(): String {
         is VrapEnumType -> "I"+this.simpleClassName
         is VrapObjectType -> if(this.simpleClassName == "Date" || this.simpleClassName == "DateTime" || this.simpleClassName == "TimeSpan" || this.simpleClassName == "Object") this.simpleClassName else "I${this.simpleClassName}"
         is VrapAnyType -> this.baseType
-        is VrapArrayType -> """List\<${this.itemType.simpleName()}\>"""
+        is VrapArrayType -> """IList\<${this.itemType.simpleName()}\>"""
         is VrapNilType -> throw IllegalStateException("$this has no simple class name.")
     }
 }
@@ -170,3 +170,22 @@ fun QueryParameter.methodName(): String {
     }
     return "With" + StringCaseFormat.UPPER_CAMEL_CASE.apply(this.name.replace(".", "-"))
 }
+
+fun Property.deprecated() : Boolean {
+    val anno = this.getAnnotation("deprecated")
+    if (anno != null) {
+        return (anno.value as BooleanInstance).value
+    }
+    val typeAnno = this.type.getAnnotation("deprecated")
+    return (typeAnno != null && (typeAnno.value as BooleanInstance).value)
+}
+
+fun Property.markDeprecated() : Boolean {
+    val anno = this.getAnnotation("markDeprecated")
+    if (anno != null) {
+        return (anno.value as BooleanInstance).value
+    }
+    val typeAnno = this.type.getAnnotation("markDeprecated")
+    return (typeAnno != null && (typeAnno.value as BooleanInstance).value)
+}
+

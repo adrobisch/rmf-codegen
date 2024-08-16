@@ -13,8 +13,9 @@ include 'languages:python'
 include 'languages:go'
 include 'languages:rust'
 include 'languages:ramldoc'
+include 'languages:bruno'
 
 include 'ctp-validators'
 include 'tools:cli-application'
 
-include 'tools:codegen-gradle-plugin'
+//include 'tools:codegen-gradle-plugin'

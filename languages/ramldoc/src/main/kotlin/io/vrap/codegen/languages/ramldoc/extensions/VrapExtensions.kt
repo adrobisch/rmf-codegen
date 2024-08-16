@@ -21,6 +21,7 @@ import io.vrap.rmf.raml.model.types.*
 import io.vrap.rmf.raml.model.types.Annotation
 import io.vrap.rmf.raml.model.util.StringCaseFormat
 import io.vrap.rmf.raml.model.values.RegExp
+import org.eclipse.emf.ecore.EAttribute
 import org.eclipse.emf.ecore.EObject
 import java.io.IOException
 import java.util.stream.Collectors
@@ -47,6 +48,12 @@ fun UriTemplate.normalize(): UriTemplate {
     return UriTemplate.fromTemplate(this.template.replace("{ID}", "{id}", ignoreCase = true))
 }
 
+fun AnyType.renderFileType(): String {
+    if (!this.isInlineType) {
+        return "type: ${this.name}"
+    }
+    return this.renderEAttributes().plus("type: ${this.name ?: "file"}").joinToString("\n")
+}
 fun AnyType.renderScalarType(): String {
     if (!this.isInlineType) {
         return "type: ${this.name}"
@@ -76,6 +83,7 @@ fun AnyType.renderEAttributes(): List<String> {
             .map { eAttribute -> when(val eValue = this.eGet(eAttribute)) {
                 is RegExp -> "${eAttribute.name}: \"${eValue}\""
                 is String -> "${eAttribute.name}: \"${eValue}\""
+                is Collection<*> -> "${eAttribute.name}:\n" + (this.eGet(eAttribute) as Collection<*>).joinToString("\n") { "  - ${it?.toYaml()}" }
                 else -> "${eAttribute.name}: ${this.eGet(eAttribute)}"
             } }
 }
@@ -109,13 +117,14 @@ fun AnyType.renderTypeFacet(): String {
         is UnionType -> this.renderUnionType()
         is ObjectType -> this.renderObjectType()
         is NumberType -> this.renderNumberType()
+        is FileType -> this.renderFileType()
         else -> this.renderScalarType()}
 }
 
 fun UriParameter.renderUriParameter(): String {
     val parameterExamples = this.inlineTypes.flatMap { inlineType -> inlineType.examples }
     return """
-            |${this.name.replace("ID", "id", ignoreCase = true)}:${if (this.type.enum.size > 0) """
+            |${this.name.replace("^ID$".toRegex(RegexOption.IGNORE_CASE), "id")}:${if (this.type.enum.size > 0) """
             |  enum:
             |  <<${this.type.enum.joinToString("\n") { "- ${it.value}"}}>>""" else ""}
             |  <<${this.type.renderType()}>>
@@ -139,7 +148,7 @@ fun Example.renderSimpleExample(): String {
     return t
 }
 
-fun Example.renderExample(exampleName: String): String {
+fun Example.renderExample(exampleName: String, inlineExample: Boolean = false): String {
     return """
             |${if (this.name.isNotEmpty()) this.name else "default"}:${if (this.displayName != null) """
             |  displayName: ${this.displayName.value.trim()}""" else ""}${if (this.description != null) """
@@ -147,8 +156,9 @@ fun Example.renderExample(exampleName: String): String {
             |    <<${this.description.value.trim()}>>""" else ""}${if (this.annotations.isNotEmpty()) """
             |  <<${this.annotations.joinToString("\n") { it.renderAnnotation() }}>>""" else ""}
             |  strict: ${this.strict.value}
-            |  value: !include ../examples/$exampleName.json
-        """.trimMargin()
+            |  value:${if (!inlineExample) " !include ../examples/$exampleName.json" else if (this.value is ObjectInstance) """|
+            |    <<${this.value.toJson().escapeAll()}>>""".trimMargin().keepAngleIndent().escapeAll() else " " + this.value.toJson().escapeAll() }
+        """.trimMargin().keepAngleIndent().escapeAll()
 }
 
 fun AnyType.renderType(withDescription: Boolean = true): String {
@@ -163,9 +173,17 @@ fun AnyType.renderType(withDescription: Boolean = true): String {
     } else {
         ""
     }
+    val displayName = if ((this.isInlineType || this.isScalar())  && this.displayName?.value.isNullOrBlank().not()) {
+        """
+        |
+        |displayName: ${this.displayName.value.trim()}
+        """.trimMargin()
+    } else {
+        ""
+    }
     return """
         |${this.renderTypeFacet()}
-        |$builtinType
+        |$builtinType$displayName
         |$description
         """.trimMargin().trimEnd()
 }
@@ -258,13 +276,16 @@ fun AnyAnnotationType.renderType(withDescription: Boolean = true): String {
 }
 
 fun VrapEnumType.packageDir(prefix: String): String {
-    val dir = this.`package`.replace(prefix, "").trim('/')
+    return this.`package`.packageDir(prefix)
+}
+
+fun String.packageDir(prefix: String): String {
+    val dir = this.replace(prefix, "").trim('/')
     return dir + if (dir.isNotEmpty()) "/" else ""
 }
 
 fun VrapObjectType.packageDir(prefix: String): String {
-    val dir = this.`package`.replace(prefix, "").trim('/')
-    return dir + if (dir.isNotEmpty()) "/" else ""
+    return this.`package`.packageDir(prefix)
 }
 
 fun Annotation.renderAnnotation(): String {

@@ -3,6 +3,7 @@ package io.vrap.rmf.codegen.cli
 import io.vrap.rmf.raml.model.RamlDiagnostic
 import io.vrap.rmf.raml.model.RamlModelResult
 import io.vrap.rmf.raml.model.modules.Api
+import io.vrap.rmf.raml.validation.Violation
 import org.eclipse.emf.common.util.Diagnostic
 import org.eclipse.emf.common.util.URI
 import java.nio.file.Paths
@@ -20,6 +21,28 @@ fun safeRun(block: () -> Int): Int {
     }
 }
 
+enum class OutputFormat {
+    CLI,
+    MARKDOWN,
+    JAVA_MARKDOWN,
+    PHP_MARKDOWN,
+    TS_MARKDOWN,
+    DOTNET_MARKDOWN,
+    JSON;
+
+    companion object {
+        const val VALID_VALUES = "CLI, JSON, MARKDOWN"
+    }
+}
+
+enum class LinkFormat {
+    CLI,
+    GITHUB;
+
+    companion object {
+        const val VALID_VALUES = "CLI, GITHUB"
+    }
+}
 
 enum class LogLevel constructor(val level: Int) {
     DEBUG(0),
@@ -40,6 +63,10 @@ enum class Printer(val printer: String) {
             }
         }
     }
+}
+
+fun RamlDiagnostic.detailMessage(): String {
+    return this.data.filterIsInstance<Violation>().find { true }?.detailMessage ?: this.message
 }
 
 interface RamlDiagnosticPrinter {

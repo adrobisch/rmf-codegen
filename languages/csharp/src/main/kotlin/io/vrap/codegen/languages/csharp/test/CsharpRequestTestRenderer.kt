@@ -1,6 +1,7 @@
 package io.vrap.codegen.languages.csharp.client.builder.test
 
 import io.vrap.codegen.languages.csharp.extensions.*
+import io.vrap.codegen.languages.extensions.deprecated
 import io.vrap.codegen.languages.extensions.getMethodName
 import io.vrap.codegen.languages.extensions.toResourceName
 import io.vrap.rmf.codegen.firstUpperCase
@@ -35,11 +36,12 @@ class CsharpRequestTestRenderer constructor(override val vrapTypeProvider: VrapT
             |using ${"$modelsUsing.Common"};
             |using Xunit;
             |
+            |// ReSharper disable CheckNamespace
             |namespace $cPackage
             |{
             |   public class ${type.toResourceName()}Test:RequestBuilderParentTests 
             |   { 
-            |       ${if (type.methods.size > 0) 
+            |       ${if (type.methods.any { !it.deprecated() }) 
                  """[Theory]
             |       [MemberData(nameof(GetData))]
             |       public void WithMethods(HttpRequestMessage request, string httpMethod, string uri) {
@@ -49,7 +51,7 @@ class CsharpRequestTestRenderer constructor(override val vrapTypeProvider: VrapT
             |       
             |       public static IEnumerable<object[]> GetData() {
             |       return new List<object[]> {
-            |               <<${type.methods.flatMap { method -> method.queryParameters.map { parameterTestProvider(type, method, it) }.plus(parameterTestProvider(type, method)) }.joinToString(",\n")}>>
+            |               <<${type.methods.filterNot { it.deprecated() }.flatMap { method -> method.queryParameters.map { parameterTestProvider(type, method, it) }.plus(parameterTestProvider(type, method)) }.joinToString(",\n")}>>
             |       };
             |    }
             |   }
@@ -129,8 +131,8 @@ class CsharpRequestTestRenderer constructor(override val vrapTypeProvider: VrapT
             is BooleanType -> true
             is IntegerType -> r.nextInt(1, 10)
             is NumberType -> when (type.format) {
-                NumberFormat.DOUBLE -> r.nextDouble()
-                NumberFormat.FLOAT -> r.nextFloat()
+                NumberFormat.DOUBLE -> r.nextDouble().toString()
+                NumberFormat.FLOAT -> r.nextFloat().toString()
                 else -> r.nextInt(1, 10)
             }
             else -> name
@@ -144,8 +146,8 @@ class CsharpRequestTestRenderer constructor(override val vrapTypeProvider: VrapT
             is BooleanType -> true
             is IntegerType -> r.nextInt(1, 10)
             is NumberType -> when (type.format) {
-                NumberFormat.DOUBLE -> r.nextDouble()
-                NumberFormat.FLOAT -> r.nextFloat()
+                NumberFormat.DOUBLE -> r.nextDouble().toString() + "m"
+                NumberFormat.FLOAT -> r.nextFloat().toString() + "m"
                 else -> r.nextInt(1, 10)
             }
             is StringType -> when (vrapType) {

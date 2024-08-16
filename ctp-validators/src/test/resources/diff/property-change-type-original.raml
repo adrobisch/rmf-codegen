@@ -1,0 +1,16 @@
+#%RAML 1.0
+title: property type change
+
+types:
+  Foo:
+    type: object
+    properties:
+      bar: string
+  Bar:
+    type: object
+    properties:
+      baz: string
+  Baz:
+    type: object
+    properties:
+      barz: Bar[]

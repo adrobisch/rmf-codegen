@@ -4,21 +4,23 @@ import io.vrap.codegen.languages.extensions.ExtensionsBase
 import io.vrap.codegen.languages.ramldoc.extensions.packageDir
 import io.vrap.codegen.languages.ramldoc.extensions.renderAnnotation
 import io.vrap.codegen.languages.ramldoc.extensions.renderEAttributes
+import io.vrap.codegen.languages.ramldoc.extensions.toJson
 import io.vrap.rmf.codegen.di.ModelPackageName
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.NamedScalarTypeRenderer
 import io.vrap.rmf.codegen.rendering.NamedStringTypeRenderer
 import io.vrap.rmf.codegen.rendering.PatternStringTypeRenderer
 import io.vrap.rmf.codegen.rendering.StringTypeRenderer
+import io.vrap.rmf.codegen.rendering.utils.escapeAll
 import io.vrap.rmf.codegen.rendering.utils.keepAngleIndent
 import io.vrap.rmf.codegen.types.*
 import io.vrap.rmf.raml.model.types.*
 import java.lang.Exception
 
-class RamlStringTypeRenderer constructor(override val vrapTypeProvider: VrapTypeProvider, @ModelPackageName override val modelPackageName: String) : RamlScalarTypeRenderer<StringType>(vrapTypeProvider, modelPackageName), StringTypeRenderer, PatternStringTypeRenderer, NamedStringTypeRenderer
-class RamlAnyTypeRenderer constructor(override val vrapTypeProvider: VrapTypeProvider, @ModelPackageName override val modelPackageName: String) : RamlScalarTypeRenderer<AnyType>(vrapTypeProvider, modelPackageName)
+class RamlStringTypeRenderer constructor(override val vrapTypeProvider: VrapTypeProvider, @ModelPackageName override val modelPackageName: String, override val inlineExamples: Boolean = false) : RamlScalarTypeRenderer<StringType>(vrapTypeProvider, modelPackageName, inlineExamples), StringTypeRenderer, PatternStringTypeRenderer, NamedStringTypeRenderer
+class RamlAnyTypeRenderer constructor(override val vrapTypeProvider: VrapTypeProvider, @ModelPackageName override val modelPackageName: String, override val inlineExamples: Boolean = false) : RamlScalarTypeRenderer<AnyType>(vrapTypeProvider, modelPackageName, inlineExamples)
 
-sealed class RamlScalarTypeRenderer<T: AnyType> constructor(override val vrapTypeProvider: VrapTypeProvider, @ModelPackageName open val modelPackageName: String) : ExtensionsBase, NamedScalarTypeRenderer<T> {
+sealed class RamlScalarTypeRenderer<T: AnyType> constructor(override val vrapTypeProvider: VrapTypeProvider, @ModelPackageName open val modelPackageName: String, open val inlineExamples: Boolean = false) : ExtensionsBase, NamedScalarTypeRenderer<T> {
 
 
     override fun render(type: T): TemplateFile {
@@ -53,10 +55,10 @@ sealed class RamlScalarTypeRenderer<T: AnyType> constructor(override val vrapTyp
             |  <<${type.description.value.trim()}>>""" else ""}
             |type: ${type.type?.name?: "string"}
             |enum:
-            |${type.enum.joinToString("\n") { "- ${it.value}" }}
+            |${type.enum.joinToString("\n") { "- '${it.value}'" }}
             |<<${type.annotations.joinToString("\n") { it.renderAnnotation() }}>>${if (examples.isNotEmpty()) """
             |examples:
-            |  <<${examples.joinToString("\n") { renderExample(vrapType, it) }}>>""" else ""}
+            |  <<${examples.joinToString("\n") { renderExample(vrapType, it, inlineExamples) }}>>""" else ""}
         """.trimMargin().keepAngleIndent()
         return TemplateFile(
                 relativePath = "types/" + vrapType.packageDir(modelPackageName) + vrapType.simpleClassName + ".raml",
@@ -83,20 +85,21 @@ sealed class RamlScalarTypeRenderer<T: AnyType> constructor(override val vrapTyp
             |displayName: ${type.displayName?.value ?: type.name}
             |(builtinType): string
             |<<${type.annotations.joinToString("\n") { it.renderAnnotation() }}>>
-            |type: ${type.type?.name?: "string"}
+            |type: ${type.type?.name?: vrapType.scalarType}
             |${if (type.description != null) """description: |-
             |  <<${type.description.value.trim()}>>""" else ""}
             |${type.renderEAttributes().joinToString("\n")}${if (examples.isNotEmpty()) """
             |examples:
-            |  <<${examples.joinToString("\n") { renderExample(type, it) }}>>""" else ""}
+            |  <<${examples.joinToString("\n") { renderExample(type, it, inlineExamples) }}>>""" else ""}
         """.trimMargin().keepAngleIndent()
+        val packageDir = type.getAnnotation("package")?.value?.value.toString().packageDir(modelPackageName)
         return TemplateFile(
                 relativePath = "types/" + type.name + ".raml",
                 content = content
         )
     }
 
-    private fun renderExample(type: VrapEnumType, example: Example): String {
+    private fun renderExample(type: VrapEnumType, example: Example, inlineExample: Boolean = false): String {
         val t = if (type.packageDir(modelPackageName).isNotEmpty()) "../.." else ".."
         val exampleName = "${t}/examples/" + type.simpleClassName + "-${if (example.name.isNotEmpty()) example.name else "default"}.json"
         return """
@@ -106,11 +109,12 @@ sealed class RamlScalarTypeRenderer<T: AnyType> constructor(override val vrapTyp
             |    <<${example.description.value.trim()}>>""" else ""}${if (example.annotations.isNotEmpty()) """
             |  <<${example.annotations.joinToString("\n") { it.renderAnnotation() }}>>""" else ""}
             |  strict: ${example.strict.value}
-            |  value: !include $exampleName
-        """.trimMargin()
+            |  value: ${if (!inlineExample) " !include $exampleName" else if (example.value is ObjectInstance || example.value is ArrayInstance) """
+            |    <<${example.value.toJson().escapeAll()}>>""" else " " + example.value.toJson().escapeAll() }
+        """.trimMargin().keepAngleIndent()
     }
 
-    private fun renderExample(type: AnyType, example: Example): String {
+    private fun renderExample(type: AnyType, example: Example, inlineExample: Boolean = false): String {
         val exampleName = "../examples/" + type.name + "-${if (example.name.isNotEmpty()) example.name else "default"}.json"
         return """
             |${if (example.name.isNotEmpty()) example.name else "default"}:${if (example.displayName != null) """
@@ -119,8 +123,8 @@ sealed class RamlScalarTypeRenderer<T: AnyType> constructor(override val vrapTyp
             |    <<${example.description.value.trim()}>>""" else ""}${if (example.annotations.isNotEmpty()) """
             |  <<${example.annotations.joinToString("\n") { it.renderAnnotation() }}>>""" else ""}
             |  strict: ${example.strict.value}
-            |  value: !include $exampleName
-        """.trimMargin()
+            |  value: ${if (!inlineExample) " !include $exampleName" else if (example.value is ObjectInstance || example.value is ArrayInstance) """
+            |    <<${example.value.toJson().escapeAll()}>>""" else " " + example.value.toJson().escapeAll() }
+        """.trimMargin().keepAngleIndent()
     }
-
 }

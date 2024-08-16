@@ -10,7 +10,9 @@ import io.vrap.rmf.codegen.di.BasePackageName
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.ObjectTypeRenderer
 import io.vrap.rmf.codegen.rendering.utils.escapeAll
+import io.vrap.rmf.codegen.rendering.utils.keepAngleIndent
 import io.vrap.rmf.codegen.rendering.utils.keepIndentation
+import io.vrap.rmf.codegen.types.VrapArrayType
 import io.vrap.rmf.codegen.types.VrapObjectType
 import io.vrap.rmf.codegen.types.VrapTypeProvider
 import io.vrap.rmf.raml.model.resources.Resource
@@ -35,20 +37,20 @@ class CsharpModelInterfaceRenderer constructor(override val vrapTypeProvider: Vr
             ).filterNotNull()
 
         var content : String = """
-            |${type.usings()}
-            |
+            |${type.usings(vrapTypeProvider, true)}
+            |// ReSharper disable CheckNamespace
             |namespace ${vrapType.csharpPackage()}
             |{
             |    <${type.DeserializationAttributes()}>
-            |    public partial interface I${vrapType.simpleClassName} ${if (extends.isNotEmpty()) { ": ${extends.joinToString(separator = ", ")}" } else ""}
+            |    public partial interface I${vrapType.simpleClassName}${if (extends.isNotEmpty()) { " : ${extends.joinToString(separator = ", ")}" } else ""}
             |    {
             |        <${type.toProperties()}>
-            |        
+            |
             |        <${type.subtypeFactories()}>
             |    }
             |}
             |
-        """.trimMargin().keepIndentation()
+        """.trimMargin().keepIndentation().split("\n").joinToString(separator = "\n") { it.trimEnd() }
 
 
         if(type.isADictionaryType())
@@ -64,12 +66,12 @@ class CsharpModelInterfaceRenderer constructor(override val vrapTypeProvider: Vr
         )
     }
 
-    private fun ObjectType.toProperties() : String = this.properties
+    private fun ObjectType.toProperties(indent: String = "") : String = this.properties
             .filterNot { it.deprecated() }
             .filterNot { property -> property.isPatternProperty() }
             .map { it.toCsharpProperty(this) }.joinToString(separator = "\n\n")
 
-    private fun Property.toCsharpProperty(objectType: ObjectType): String {
+    private fun Property.toCsharpProperty(objectType: ObjectType, indent: String = ""): String {
         val propName = this.name.firstUpperCase()
         val typeName = this.type.toVrapType().simpleName()
         val overrideProp = this.shouldOverrideThisProperty(objectType)
@@ -79,7 +81,9 @@ class CsharpModelInterfaceRenderer constructor(override val vrapTypeProvider: Vr
         val deprecationAttr = if(this.deprecationAnnotation() == "") "" else this.deprecationAnnotation()+"\n";
 
         return """
-            |${deprecationAttr}${newKeyword}${typeName}$nullableChar $propName { get; set;}
+            |${deprecationAttr}${newKeyword}${typeName}$nullableChar $propName { get; set; }${if (this.type.toVrapType() is VrapArrayType) """
+            |
+            |${deprecationAttr}${newKeyword}IEnumerable\<${(this.type.toVrapType() as VrapArrayType).itemType.simpleName()}\>$nullableChar ${propName}Enumerable { set =\> $propName = value$nullableChar.ToList(); }""" else ""}
             """.trimMargin()
     }
 
@@ -100,9 +104,9 @@ class CsharpModelInterfaceRenderer constructor(override val vrapTypeProvider: Vr
         if(hasParent)
         {
             val parent = objectType.type as ObjectType
-            return parent.allProperties.find { it.name.equals(this.name) }?.required ?: false
+            return parent.allProperties.find { it.name.equals(this.name) }?.parentRequired(parent) ?: false
         }
-        return false
+        return this.required
     }
 
     fun ObjectType.renderTypeAsADictionaryType() : String {
@@ -111,7 +115,7 @@ class CsharpModelInterfaceRenderer constructor(override val vrapTypeProvider: Vr
         val property = this.properties[0]
 
         return  """
-            |${this.usings()}
+            |${this.usings(vrapTypeProvider, true, true)}
             |
             |namespace ${vrapType.csharpPackage()}
             |{
@@ -133,17 +137,21 @@ class CsharpModelInterfaceRenderer constructor(override val vrapTypeProvider: Vr
                 .filter { it.getAnnotation("deprecated") == null }
                 .filter { it.discriminatorValue != null }
                 .sortedBy { anyType -> anyType.discriminatorValue.lowercase(Locale.getDefault()) }
-                .map { it.subtypeFactory() }
+                .map { it.subtypeFactory(this) }
                 .joinToString(separator = "\n")}>
             """.trimMargin()
         else ""
     }
 
-    private fun ObjectType.subtypeFactory(): String {
+    private fun ObjectType.subtypeFactory(parentType: ObjectType): String {
         val vrapType = vrapTypeProvider.doSwitch(this) as VrapObjectType
         val className = "${vrapType.`package`.toCsharpPackage()}.${this.objectClassName()}"
+        var subTypeName = this.discriminatorValue.upperCamelCase()
+        if (parentType.allProperties.any { it.name.lowercase() == subTypeName.lowercase() }) {
+            subTypeName = "_$subTypeName"
+        }
         return """
-            |static $className ${this.discriminatorValue.upperCamelCase()}(Action\<$className\> init = null) {
+            |static $className $subTypeName(Action\<$className\> init = null) {
             |    var t = new $className();
             |    init?.Invoke(t);
             |    return t;
@@ -175,10 +183,4 @@ class CsharpModelInterfaceRenderer constructor(override val vrapTypeProvider: Vr
             |[DeserializeAs(typeof(${vrapType.`package`.toCsharpPackage()}.${this.objectClassName()}))]
             """.trimMargin()
     }
-
-    private fun Property.deprecated() : Boolean {
-        val anno = this.getAnnotation("deprecated")
-        return (anno != null && (anno.value as BooleanInstance).value)
-    }
-
 }

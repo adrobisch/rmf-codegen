@@ -18,14 +18,8 @@ class PostmanModuleRenderer constructor(val api: Api, override val vrapTypeProvi
     override fun produceFiles(): List<TemplateFile> {
         return listOf(
                 template(api),
-                collection(api),
-                readmeMd()
+                collection(api)
         )
-    }
-
-    private fun readmeMd(): TemplateFile {
-        return TemplateFile(relativePath = "README.md",
-                content = readme(api))
     }
 
     private fun template(api: Api): TemplateFile {
@@ -93,7 +87,7 @@ class PostmanModuleRenderer constructor(val api: Api, override val vrapTypeProvi
 
     private fun readme(api: Api): String {
         return """
-            # commercetools API Postman collection
+            # commercetools API Postman Collection
 
             This Postman collection contains examples of requests and responses for most endpoints and commands of the
             ${api.title}. For every command the smallest possible payload is given. Please find optional

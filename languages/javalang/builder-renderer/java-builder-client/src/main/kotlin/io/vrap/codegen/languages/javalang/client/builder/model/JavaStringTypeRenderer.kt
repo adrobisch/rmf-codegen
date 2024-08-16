@@ -9,6 +9,7 @@ import io.vrap.rmf.codegen.rendering.utils.escapeAll
 import io.vrap.rmf.codegen.rendering.utils.keepIndentation
 import io.vrap.rmf.codegen.types.VrapEnumType
 import io.vrap.rmf.codegen.types.VrapTypeProvider
+import io.vrap.rmf.raml.model.types.Annotation
 import io.vrap.rmf.raml.model.types.StringInstance
 import io.vrap.rmf.raml.model.types.StringType
 
@@ -16,6 +17,17 @@ class JavaStringTypeRenderer constructor(override val vrapTypeProvider: VrapType
 
     override fun render(type: StringType): TemplateFile {
         val vrapType = vrapTypeProvider.doSwitch(type).toJavaVType() as VrapEnumType
+
+        val extends = arrayListOf("JsonEnum")
+            .plus(
+                when (val ex = type.getAnnotation("java-extends") ) {
+                    is Annotation -> {
+                        (ex.value as StringInstance).value.escapeAll()
+                    }
+                    else -> null
+                }
+            )
+            .filterNotNull()
 
         val content = """
                 |package ${vrapType.`package`};
@@ -25,16 +37,20 @@ class JavaStringTypeRenderer constructor(override val vrapTypeProvider: VrapType
                 |import java.lang.String;
                 |import java.util.Arrays;
                 |import java.util.Optional;
+                |import io.vrap.rmf.base.client.JsonEnum;
                 |import io.vrap.rmf.base.client.utils.Generated;
                 |
                 |/**
                 |${type.toComment(" * ${vrapType.simpleClassName}").escapeAll()}
                 | */
                 |${JavaSubTemplates.generatedAnnotation}
-                |public interface ${vrapType.simpleClassName} {
+                |public interface ${vrapType.simpleClassName} ${if (extends.isNotEmpty()) { "extends ${extends.joinToString(separator = ", ")}" } else ""} {
                 |
                 |    <${type.enumConsts()}>
                 |    
+                |    /**
+                |     * possible values of ${vrapType.simpleClassName}
+                |     */
                 |    enum ${vrapType.simpleClassName}Enum implements ${vrapType.simpleClassName} {
                 |        <${type.enumFields()}>
                 |        private final String jsonName;
@@ -52,13 +68,31 @@ class JavaStringTypeRenderer constructor(override val vrapTypeProvider: VrapType
                 |        }
                 |    }
                 |
+                |    /**
+                |     * the JSON value
+                |     * @return json value
+                |     */
                 |    @JsonValue
                 |    String getJsonName();
                 |
+                |    /**
+                |     * the enum value
+                |     * @return name
+                |     */
                 |    String name();
                 |
+                |    /**
+                |     * convert value to string
+                |     * @return string representation
+                |     */
                 |    String toString();
                 |
+                |    /**
+                |     * factory method for a enum value of ${vrapType.simpleClassName}
+                |     * if no enum has been found an anonymous instance will be created
+                |     * @param value the enum value to be wrapped
+                |     * @return enum instance
+                |     */
                 |    @JsonCreator
                 |    public static ${vrapType.simpleClassName} findEnum(String value) {
                 |        return findEnumViaJsonName(value).orElse(new ${vrapType.simpleClassName}() {
@@ -78,13 +112,24 @@ class JavaStringTypeRenderer constructor(override val vrapTypeProvider: VrapType
                 |        });
                 |    }
                 |
+                |    /**
+                |     * method to find enum using the JSON value
+                |     * @param jsonName the json value to be wrapped
+                |     * @return optional of enum instance
+                |     */
                 |    public static Optional\<${vrapType.simpleClassName}\> findEnumViaJsonName(String jsonName) {
                 |        return Arrays.stream(values()).filter(t -\> t.getJsonName().equals(jsonName)).findFirst();
                 |    }
                 |    
+                |    /**
+                |     * possible enum values
+                |     * @return array of possible enum values
+                |     */
                 |    public static ${vrapType.simpleClassName}[] values() {
                 |        return ${vrapType.simpleClassName}Enum.values();
                 |    }
+                |    
+                |    <${type.getAnnotation("java-mixin")?.value?.value?.let { (it as String).escapeAll()} ?: ""}>
                 |}
                 """.trimMargin().keepIndentation()
 
@@ -98,6 +143,9 @@ class JavaStringTypeRenderer constructor(override val vrapTypeProvider: VrapType
     fun StringType.enumFields() = enumValues()
             ?.map {
                 """
+                |/**
+                | * ${it.value}
+                | */
                 |${it.value.enumValueName()}("${it.value}")
             """.trimMargin()
             }

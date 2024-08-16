@@ -7,10 +7,9 @@ import io.vrap.rmf.codegen.rendering.FileProducer
 import io.vrap.rmf.codegen.rendering.utils.keepIndentation
 import io.vrap.rmf.raml.model.modules.Api
 
-class ClientFileProducer constructor(
-    val clientConstants: ClientConstants,
-    val api: Api,
-    @BasePackageName val basePackageName: String
+class ClientFileProducer(
+        val api: Api,
+        @BasePackageName val basePackageName: String
 ) : FileProducer {
 
     override fun produceFiles(): List<TemplateFile> {
@@ -66,7 +65,10 @@ class ClientFileProducer constructor(
                 |
                 |func (sat *SetUserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
                 |    req.Header.Set("User-Agent", sat.userAgent)
-                |    return sat.T.RoundTrip(req)
+                |    if sat.T != nil {
+                |       return sat.T.RoundTrip(req)
+                |    }
+                |    return http.DefaultTransport.RoundTrip(req)
                 |}
                 |
                 |// NewClient creates a new client based on the provided ClientConfig
@@ -201,6 +203,8 @@ class ClientFileProducer constructor(
                 |func (e GenericRequestError) Error() string {
                 |    return fmt.Sprintf("Request returned status code %d", e.StatusCode)
                 |}
+                |
+                |var ErrNotFound = errors.New("resource not found")
             """.trimMargin().keepIndentation()
         )
     }
@@ -257,8 +261,9 @@ class ClientFileProducer constructor(
                 |}
                 |
                 |func decodeStruct(input interface{}, result interface{}) error {
+                |    meta := &mapstructure.Metadata{}
                 |    decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-                |        Metadata: nil,
+                |        Metadata: meta,
                 |        DecodeHook: mapstructure.ComposeDecodeHookFunc(
                 |            toTimeHookFunc()),
                 |        Result: result,
@@ -270,7 +275,22 @@ class ClientFileProducer constructor(
                 |    if err := decoder.Decode(input); err != nil {
                 |        return err
                 |    }
+                |
+                |    if val, ok := result.(DecodeStruct); ok {
+                |        if raw, ok := input.(map[string]interface{}); ok {
+                |            unused := make(map[string]interface{})
+                |            for _, key := range meta.Unused {
+                |                unused[key] = raw[key]
+                |            }
+                |            val.DecodeStruct(unused)
+                |        }
+                |    }
+                |
                 |    return err
+                |}
+                |
+                |type DecodeStruct interface {
+                |    DecodeStruct(map[string]interface{}) error
                 |}
             """.trimMargin().keepIndentation()
         )

@@ -3,6 +3,7 @@ package io.vrap.codegen.languages.javalang.client.builder.model
 import com.google.common.collect.Lists
 import io.vrap.codegen.languages.extensions.hasSubtypes
 import io.vrap.codegen.languages.extensions.isPatternProperty
+import io.vrap.codegen.languages.extensions.namedSubTypes
 import io.vrap.codegen.languages.extensions.toComment
 import io.vrap.codegen.languages.java.base.JavaSubTemplates
 import io.vrap.codegen.languages.java.base.extensions.*
@@ -12,10 +13,7 @@ import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.ObjectTypeRenderer
 import io.vrap.rmf.codegen.rendering.utils.escapeAll
 import io.vrap.rmf.codegen.rendering.utils.keepIndentation
-import io.vrap.rmf.codegen.types.VrapArrayType
-import io.vrap.rmf.codegen.types.VrapEnumType
-import io.vrap.rmf.codegen.types.VrapObjectType
-import io.vrap.rmf.codegen.types.VrapTypeProvider
+import io.vrap.rmf.codegen.types.*
 import io.vrap.rmf.raml.model.types.*
 import io.vrap.rmf.raml.model.types.Annotation
 import io.vrap.rmf.raml.model.types.util.TypesSwitch
@@ -34,7 +32,15 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
                         }
                         else -> null
                     }
-                ).filterNotNull()
+                )
+                .plus(
+                    if (type.name.endsWith("Draft") && !type.hasSubtypes()) {
+                        "io.vrap.rmf.base.client.Draft<${vrapType.simpleClassName}>".escapeAll()
+                    } else {
+                        null
+                    }
+                )
+            .filterNotNull()
 
         val content= """
             |package ${vrapType.`package`};
@@ -46,11 +52,13 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
             |import com.fasterxml.jackson.databind.annotation.*;
             |import io.vrap.rmf.base.client.utils.Generated;
             |import io.vrap.rmf.base.client.Accessor;
-            |import javax.validation.Valid;
-            |import javax.validation.constraints.NotNull;
+            |import jakarta.validation.Valid;
+            |import javax.annotation.Nullable;
+            |import jakarta.validation.constraints.NotNull;
             |import java.util.*;
             |import java.time.*;
             |import java.util.function.Function;
+            |import java.util.stream.Collectors;
             |import java.io.IOException;
             |
             |/**
@@ -75,10 +83,18 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
             |
             |    <${type.templateMethodBody()}>
             |
+            |    <${type.cloneTemplateMethodBody()}>
+
             |    <${type.staticBuilderMethod()}>
             |
             |    <${type.subTypeBuilders().escapeAll()}>
             |
+            |    /**
+            |     * accessor map function
+            |     * @param \<T\> mapped type
+            |     * @param helper function to map the object
+            |     * @return mapped value
+            |     */
             |    default \<T\> T with${vrapType.simpleClassName}(Function\<${vrapType.simpleClassName}, T\> helper) {
             |        return helper.apply(this);
             |    }
@@ -97,6 +113,10 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
     private fun ObjectType.typeReference(): String {
         val vrapType = vrapTypeProvider.doSwitch(this).toJavaVType() as VrapObjectType
         return """
+            |/**
+            | * gives a TypeReference for usage with Jackson DataBind
+            | * @return TypeReference
+            | */
             |public static com.fasterxml.jackson.core.type.TypeReference<${vrapType.simpleClassName}> typeReference() {
             |    return new com.fasterxml.jackson.core.type.TypeReference<${vrapType.simpleClassName}>() {
             |        @Override
@@ -120,7 +140,12 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
     private fun ObjectType.discriminatorValueConst(): String {
         if (this.discriminatorValue == null) return "";
 
-        return "String ${this.discriminatorValue.enumValueName()} = \"${this.discriminatorValue}\";";
+        return """
+            /**
+             * discriminator value for ${this.name}
+             */
+            String ${this.discriminatorValue.enumValueName()} = \"${this.discriminatorValue}\";
+            """.trimIndent()
     }
 
     private fun ObjectType.subTypesAnnotations(): String {
@@ -160,6 +185,10 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
             ""
         }else {
             """
+                |/**
+                | * factory method
+                | * @return instance of ${vrapType.simpleClassName}
+                | */
                 |public static ${vrapType.simpleClassName} of(){
                 |    return new ${vrapType.simpleClassName}Impl();
                 |}
@@ -174,10 +203,19 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
             ""
         }else {
             """
+                |/**
+                | * builder factory method for ${vrapType.simpleClassName}
+                | * @return builder
+                | */
                 |public static ${vrapType.simpleClassName}Builder builder() {
                 |    return ${vrapType.simpleClassName}Builder.of();
                 |}
                 |
+                |/**
+                | * create builder for ${vrapType.simpleClassName} instance
+                | * @param template instance with prefilled values for the builder
+                | * @return builder
+                | */
                 |public static ${vrapType.simpleClassName}Builder builder(final ${vrapType.simpleClassName} template) {
                 |    return ${vrapType.simpleClassName}Builder.of(template);
                 |}
@@ -196,6 +234,10 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
                 .map {
                     val vrapSubType = vrapTypeProvider.doSwitch(it) as VrapObjectType
                     """
+                    |/**
+                    | * builder for ${it.discriminatorValue.lowerCamelCase()} subtype
+                    | * @return builder
+                    | */
                     |public static ${vrapSubType.`package`.toJavaPackage()}.${vrapSubType.simpleClassName}Builder ${it.discriminatorValue.lowerCamelCase()}Builder() {
                     |   return ${vrapSubType.`package`.toJavaPackage()}.${vrapSubType.simpleClassName}Builder.of();
                     |}
@@ -208,7 +250,7 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
 
 
     private fun ObjectType.getters() = this.properties
-            .filter { it.getAnnotation("deprecated") == null }
+            .filterNot { it.deprecated() }
             .map { it.getter() }
             .joinToString(separator = "\n")
 
@@ -217,6 +259,7 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
             """
             |/**
             |${this.type.toComment(" *")}
+            | * @return map of the pattern property values
             | */
             |${this.validationAnnotations()}
             |@JsonAnyGetter
@@ -226,6 +269,7 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
             """
             |/**
             |${this.type.toComment(" *")}
+            | * @return ${this.name}
             | */
             |${this.validationAnnotations()}
             |@JsonProperty("${this.name}")
@@ -235,7 +279,7 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
     }
 
     private fun ObjectType.setters() = this.properties
-            .filter { it.getAnnotation("deprecated") == null }
+            .filterNot { it.deprecated() }
             .filter { it.name != this.discriminator() }
             .map { it.setter() }
             .joinToString(separator = "\n\n")
@@ -244,38 +288,69 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
         val vrapType = this.type.toVrapType()
         return if (this.isPatternProperty()) {
             """
+            |/**
+            |${this.type.toComment(" * set pattern property")}
+            | * @param key property name
+            | * @param value property value
+            | */
             |${this.deprecationAnnotation()}
             |@JsonAnySetter
             |public void setValue(String key, ${vrapType.simpleName()} value);
             """.trimMargin()
         } else if (this.name.equals("interface")) {
             """
+            |/**
+            |${this.type.toComment(" * set interface")}
+            | * @param _interface value to be set
+            | */
             |${this.deprecationAnnotation()}
             |public void setInterface(final ${vrapType.simpleName()} _interface);
             |""".trimMargin()
         } else if (vrapType is VrapArrayType) {
             """
+            |/**
+            |${this.type.toComment(" * set ${this.name}")}
+            | * @param ${this.name.lowerCamelCase()} values to be set
+            | */
             |${this.deprecationAnnotation()}
             |@JsonIgnore
             |public void set${this.name.upperCamelCase()}(final ${vrapType.itemType.simpleName()} ...${this.name.lowerCamelCase()});
+            |/**
+            |${this.type.toComment(" * set ${this.name}")}
+            | * @param ${this.name.lowerCamelCase()} values to be set
+            | */
+            |${this.deprecationAnnotation()}
             |public void set${this.name.upperCamelCase()}(final ${vrapType.simpleName()} ${this.name.lowerCamelCase()});
             """.trimMargin()
         } else if (this.type is UnionType) {
             (this.type as UnionType).oneOf
                 .map { anyType -> """
+                    |/**
+                    |${this.type.toComment(" * set ${this.name}")}
+                    | * @param ${this.name.lowerCamelCase()} value to be set
+                    | */
                     |${this.deprecationAnnotation()}
                     |public void set${this.name.upperCamelCase()}(final ${anyType.toVrapType().simpleName()} ${this.name.lowerCamelCase()});""".trimMargin() }
                 .plus("""
+                    |/**
+                    |${this.type.toComment(" * set ${this.name}")}
+                    | * @param ${this.name.lowerCamelCase()} value to be set
+                    | */
                     |${this.deprecationAnnotation()}
                     |public void set${this.name.upperCamelCase()}(final ${vrapType.simpleName()} ${this.name.lowerCamelCase()});""".trimMargin())
                 .joinToString("\n");
         } else {
             """
+            |/**
+            |${this.type.toComment(" * set ${this.name}")}
+            | * @param ${this.name.lowerCamelCase()} value to be set
+            | */
             |${this.deprecationAnnotation()}
             |public void set${this.name.upperCamelCase()}(final ${vrapType.simpleName()} ${this.name.lowerCamelCase()});
             |""".trimMargin()
         }
     }
+
 
     private fun Property.validationAnnotations(): String {
         val validationAnnotations = ArrayList<String>()
@@ -303,25 +378,85 @@ class JavaModelInterfaceRenderer constructor(override val vrapTypeProvider: Vrap
         }else {
             val vrapType = vrapTypeProvider.doSwitch(this) as VrapObjectType
             val fieldsAssignment : String = this.allProperties
-                    .filter { it.getAnnotation("deprecated") == null }
+                    .filterNot { it.deprecated() }
                     .filter {it.name != this.discriminator()}
                     .map {
                         if(!it.isPatternProperty()){
                             "instance.set${it.name.upperCamelCase()}(template.get${it.name.upperCamelCase()}());"
                         }else{
-                            "template.values().forEach((s, o) -> instance.setValue(s, o));".escapeAll()
-                            ""
+                            "Optional.ofNullable(template.values()).ifPresent(t -> t.forEach(instance::setValue));".escapeAll()
                         }
                     }
                     .joinToString(separator = "\n")
 
             """
+            |/**
+            | * factory method to create a shallow copy ${vrapType.simpleClassName}
+            | * @param template instance to be copied
+            | * @return copy instance
+            | */
             |public static ${vrapType.simpleClassName} of(final ${vrapType.simpleClassName} template) {
             |    ${vrapType.simpleClassName}Impl instance = new ${vrapType.simpleClassName}Impl();
             |    <$fieldsAssignment>
             |    return instance;
             |}
         """.trimMargin()
+        }
+    }
+
+    private fun ObjectType.cloneTemplateMethodBody(): String {
+        val vrapType = vrapTypeProvider.doSwitch(this) as VrapObjectType
+        val fieldsAssignment = this.allProperties
+                .filterNot { it.deprecated() }
+                .filter { it.name != this.discriminator() }
+                .map {
+                    if (!it.isPatternProperty()) {
+                        if (it.type.toVrapType().fullClassName() == "java.lang.Object") {
+                            "instance.set${it.name.upperCamelCase()}(template.get${it.name.upperCamelCase()}());"
+                        } else {
+                            when (val t = it.type) {
+                                is ObjectType -> "instance.set${it.name.upperCamelCase()}(${t.toVrapType().fullClassName()}.deepCopy(template.get${it.name.upperCamelCase()}()));"
+                                is ArrayType -> """instance.set${it.name.upperCamelCase()}(Optional.ofNullable(template.get${it.name.upperCamelCase()}())
+                                    |        .map(${t.items.itemTypeDeepCopyMethod()})
+                                    |        .orElse(null));""".trimMargin().escapeAll()
+                                else -> "instance.set${it.name.upperCamelCase()}(template.get${it.name.upperCamelCase()}());"
+                            }
+                        }
+                    } else {
+                        "Optional.ofNullable(template.values()).ifPresent(t -> t.forEach(instance::setValue));".escapeAll()
+                    }
+                }
+        return """
+            |/**
+            | * factory method to create a deep copy of ${vrapType.simpleClassName}
+            | * @param template instance to be copied
+            | * @return copy instance
+            | */
+            |@Nullable
+            |public static ${vrapType.simpleClassName} deepCopy(@Nullable final ${vrapType.simpleClassName} template) {
+            |    if (template == null) {
+            |        return null;
+            |    }
+            |    <${if (this.namedSubTypes().isNotEmpty()) this.namedSubTypes().joinToString("\n") { it.subTypeDeepCopy() } else ""}>
+            |    ${vrapType.simpleClassName}Impl instance = new ${vrapType.simpleClassName}Impl();
+            |    <${fieldsAssignment.joinToString("\n")}>
+            |    return instance;
+            |}
+        """.trimMargin()
+    }
+
+    private fun AnyType.subTypeDeepCopy(): String {
+        return """
+            |if (template instanceof ${this.toVrapType().fullClassName()}) {
+            |    return ${this.toVrapType().fullClassName()}.deepCopy((${this.toVrapType().fullClassName()})template);
+            |}
+        """.trimMargin()
+    }
+
+    private fun AnyType.itemTypeDeepCopyMethod(): String {
+        return when(this) {
+            is ObjectType -> "t -> t.stream().map(${this.toVrapType().fullClassName()}::deepCopy).collect(Collectors.toList())"
+            else -> "ArrayList::new"
         }
     }
 

@@ -43,31 +43,31 @@ object RamldocModelModule : Module {
     override fun configure(generatorModule: RamlGeneratorModule) = setOf(
         ObjectTypeGenerator(
                 setOf(
-                        RamlObjectTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName())
+                        RamlObjectTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName(), generatorModule.generatorConfig.inlineExamples)
                 ),
                 generatorModule.allObjectTypes()
         ),
         StringTypeGenerator(
                 setOf(
-                        RamlStringTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName())
+                        RamlStringTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName(), generatorModule.generatorConfig.inlineExamples)
                 ),
                 generatorModule.allEnumStringTypes()
         ),
         PatternStringTypeGenerator(
                 setOf(
-                        RamlStringTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName())
+                        RamlStringTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName(), generatorModule.generatorConfig.inlineExamples)
                 ), generatorModule.allPatternStringTypes()),
         NamedStringTypeGenerator(
                 setOf(
-                        RamlStringTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName())
+                        RamlStringTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName(), generatorModule.generatorConfig.inlineExamples)
                 ), generatorModule.allNamedScalarTypes()),
         NamedScalarTypeGenerator(
                 setOf(
-                        RamlAnyTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName())
+                        RamlAnyTypeRenderer(generatorModule.vrapTypeProvider(), generatorModule.provideModelPackageName(), generatorModule.generatorConfig.inlineExamples)
                 ), generatorModule.allAnyTypes().namedAnyTypes()),
         ResourceGenerator(
                 setOf(
-                        RamlResourceRenderer(generatorModule.provideRamlModel(), generatorModule.vrapTypeProvider())
+                        RamlResourceRenderer(generatorModule.provideRamlModel(), generatorModule.vrapTypeProvider(), generatorModule.generatorConfig.inlineExamples)
                 ), generatorModule.allResources()),
         FileGenerator(
                 setOf(
