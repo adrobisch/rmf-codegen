@@ -2,6 +2,7 @@ package io.vrap.codegen.languages.rust
 
 import io.vrap.codegen.languages.extensions.ExtensionsBase
 import io.vrap.codegen.languages.extensions.isPatternProperty
+import io.vrap.codegen.languages.extensions.namedSubTypes
 import io.vrap.rmf.codegen.types.*
 import io.vrap.rmf.raml.model.types.*
 import org.eclipse.emf.ecore.EObject
@@ -16,9 +17,11 @@ interface RustObjectTypeExtensions : ExtensionsBase {
 
         val typesToCheck = Stack<AnyType>()
         val visited = HashMap<AnyType, Boolean>()
-        visited[findObjectType] = true
 
         findObjectType.allProperties.forEach { typesToCheck.push(it.type) }
+        if (findObjectType.isDiscriminated()) {
+            findObjectType.namedSubTypes().forEach { typesToCheck.push(it) }
+        }
 
         while (!typesToCheck.isEmpty()) {
             val next = typesToCheck.pop() ?: continue
@@ -29,12 +32,18 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                 visited[next] = true
             }
 
-            if (next.toVrapType() == findObjectType.toVrapType()) {
+            if (next.toVrapType() == findObjectType.toVrapType() || contextTypes.contains(next)) {
                 return true
             }
 
             when (next) {
-                is ObjectType -> next.allProperties.forEach { typesToCheck.push(it.type) }
+                is ObjectType -> {
+                    next.allProperties.forEach { typesToCheck.push(it.type) }
+                    if (next.isDiscriminated()) {
+                        next.namedSubTypes().forEach { typesToCheck.push(it) }
+                    }
+                }
+                is UnionType -> typesToCheck.push(next.commonType())
             }
         }
         return false
@@ -53,9 +62,8 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             }
             is UnionType -> {
                 if (oneOf.size > 1) {
-                    val common = commonType(oneOf)
-                    if (common != null) {
-                        return common.renderTypeExpr()
+                    when(val common = this.commonType()) {
+                        is ObjectType -> return common.renderTypeExpr()
                     }
                     return "Box<dyn Any>"
                 }
@@ -68,7 +76,11 @@ interface RustObjectTypeExtensions : ExtensionsBase {
         }
     }
 
-    private fun commonType(types: List<AnyType>): AnyType? {
+    fun UnionType.commonType(): AnyType? {
+        return getCommonType(this.oneOf)
+    }
+
+    private fun getCommonType(types: List<AnyType>): AnyType? {
         val baseTypes = types.map {
             it.type
         }.filterNotNull()
@@ -88,7 +100,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
         return if (same) {
             first
         } else {
-            commonType(baseTypes)
+            getCommonType(baseTypes)
         }
     }
 
@@ -147,7 +159,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
 
         val typeDependencies: List<AnyType> = this.allProperties
             .map { it.type }
-            .flatMap { if (it is UnionType) Collections.singletonList(commonType(it.oneOf)).filterNotNull() else Collections.singletonList(it) }
+            .flatMap { if (it is UnionType) Collections.singletonList(it.commonType()).filterNotNull() else Collections.singletonList(it) }
             .filterNotNull()
 
         return typeDependencies

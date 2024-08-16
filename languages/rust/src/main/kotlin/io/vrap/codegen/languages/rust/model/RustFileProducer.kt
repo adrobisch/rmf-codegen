@@ -142,7 +142,7 @@ chrono = { version = "0.4", features = ["serde"] }
                 """
                     |#[serde(rename = "${it.discriminatorValue}")]
                     |${it.name.exportName()} {
-                    |  <${it.renderStructFields()}>
+                    |  <${it.renderStructFields(contextTypes = listOf(this))}>
                     |}
                     """.trimMargin()
             }
@@ -150,12 +150,13 @@ chrono = { version = "0.4", features = ["serde"] }
     }
 
     // Renders the attribute of this model as type annotations.
-    private fun ObjectType.renderStructFields(pubFields: Boolean = false): String {
+    private fun ObjectType.renderStructFields(pubFields: Boolean = false, contextTypes: List<ObjectType> = listOf()): String {
         val currentType = this
         val pubPrefix = when (pubFields) {
             true -> "pub "
             else -> ""
         }
+        val currentContext = contextTypes.plus(currentType)
         return rustStructFields(true)
             .map {
                 val comment: String = it.type.toLineComment().escapeAll()
@@ -169,14 +170,14 @@ chrono = { version = "0.4", features = ["serde"] }
                     """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
-                    |$pubPrefix${name.rustName()}: ${it.type.renderTypeExpr(listOf(currentType))}""".trimMargin()
+                    |$pubPrefix${name.rustName()}: ${it.type.renderTypeExpr(currentContext)}""".trimMargin()
                 } else {
                     val type = it.type
 
                     """
                     |<$comment>
                     |#[serde(rename = "${it.name}")]
-                    |$pubPrefix${name.rustName()}: Option\<${type.renderTypeExpr(listOf(currentType))}\>""".trimMargin()
+                    |$pubPrefix${name.rustName()}: Option\<${type.renderTypeExpr(currentContext)}\>""".trimMargin()
                 }
             }
             .joinToString(",\n")
