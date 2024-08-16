@@ -351,7 +351,7 @@ class GenerateSubcommand : Callable<Int> {
                     }
                     GenerationTarget.RUST_CLIENT -> {
                         val generatorModule = RamlGeneratorModule(apiProvider, generatorConfig, RustBaseTypes)
-                        RamlGeneratorComponent(generatorModule, RustModelModule)
+                        RamlGeneratorComponent(generatorModule, RustModelModule, RustClientModule)
                     }
                 }
             } else {

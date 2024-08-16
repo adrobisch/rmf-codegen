@@ -5,9 +5,7 @@ import io.vrap.rmf.raml.model.util.StringCaseFormat
 fun String.rustModuleFileName(): String {
     return this.split("/")
             .map { StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(it) }
-            .joinToString(separator = "/")
-            .replace("platform/", "api_")
-            .replace("models/", "models_")
+            .joinToString(separator = "_")
             .replace("_+".toRegex(), "_")
 }
 

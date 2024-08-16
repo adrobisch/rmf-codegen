@@ -26,13 +26,10 @@ class RequestBuilder constructor(
 ) : ResourceRenderer, RustObjectTypeExtensions {
 
     override fun render(type: Resource): TemplateFile {
-
-        val filename = type.goClientFileName()
+        val filename = type.rustClientFileName()
         return TemplateFile(
-            relativePath = "$basePackageName/$filename.go",
+            relativePath = "src/client/$filename.rs",
             content = """|
-                |package $basePackageName
-                |
                 |$rustGeneratedComment
                 |
                 |<${type.importStatement()}>

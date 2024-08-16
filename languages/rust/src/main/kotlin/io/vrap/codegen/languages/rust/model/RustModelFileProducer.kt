@@ -1,12 +1,10 @@
 package io.vrap.codegen.languages.rust.model
 
 import io.vrap.codegen.languages.extensions.getSuperTypes
-import io.vrap.codegen.languages.extensions.isPatternProperty
 import io.vrap.codegen.languages.extensions.namedSubTypes
 import io.vrap.codegen.languages.extensions.sortedByTopology
 import io.vrap.codegen.languages.rust.*
 import io.vrap.rmf.codegen.di.AllAnyTypes
-import io.vrap.rmf.codegen.di.BasePackageName
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.FileProducer
 import io.vrap.rmf.codegen.rendering.utils.escapeAll
@@ -16,10 +14,9 @@ import io.vrap.rmf.codegen.types.VrapScalarType
 import io.vrap.rmf.codegen.types.VrapTypeProvider
 import io.vrap.rmf.raml.model.types.*
 
-class RustFileProducer constructor(
+class RustModelFileProducer constructor(
     override val vrapTypeProvider: VrapTypeProvider,
     @AllAnyTypes val allAnyTypes: List<AnyType>,
-    @BasePackageName val basePackageName: String
 ) : RustObjectTypeExtensions, FileProducer {
 
     val modules =
@@ -82,7 +79,7 @@ chrono = { version = "0.4", features = ["serde"] }
        """.trimMargin().keepIndentation()
 
         val filename = moduleName.rustModuleFileName()
-        return TemplateFile(content, "src/" + filename + ".rs")
+        return TemplateFile(content, "src/models/" + filename + ".rs")
     }
 
     private fun AnyType.renderAnyType(): String {

@@ -6,7 +6,7 @@ import io.vrap.rmf.codegen.rendering.*
 
 object RustClientModule : Module {
 
-    override fun configure(generatorModule: RamlGeneratorModule) = setOf<CodeGenerator> (
+    override fun configure(generatorModule: RamlGeneratorModule) = setOf (
         ResourceGenerator(
             setOf(
                 RequestBuilder(
@@ -18,19 +18,9 @@ object RustClientModule : Module {
             ),
             generatorModule.allResources()
         ),
-        MethodGenerator(
-            setOf(
-                RustMethodRenderer(
-                    generatorModule.clientConstants(),
-                    generatorModule.vrapTypeProvider(),
-                    generatorModule.providePackageName()
-                )
-            ),
-            generatorModule.allResourceMethods()
-        ),
         FileGenerator(
             setOf(
-                ClientFileProducer(
+                RustClientFileProducer(
                     generatorModule.clientConstants(),
                     generatorModule.provideRamlModel(),
                     generatorModule.providePackageName()

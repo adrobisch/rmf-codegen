@@ -18,7 +18,7 @@ fun Method.toStructName(): String {
     return "${this.resource().toResourceName()}RequestMethod${this.methodName.exportName()}".exportName()
 }
 
-fun Resource.goClientFileName(): String {
+fun Resource.rustClientFileName(): String {
     return listOf<String>(
         "client",
         resourcePathName.snakeCase(),
@@ -26,7 +26,7 @@ fun Resource.goClientFileName(): String {
     ).filter { x -> x != "" }.joinToString(separator = "_")
 }
 
-fun Method.goClientFileName(): String {
+fun Method.rustClientFileName(): String {
     return listOf<String>(
         "client",
         resource().resourcePathName.snakeCase(),
