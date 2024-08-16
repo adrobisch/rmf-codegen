@@ -52,8 +52,6 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                 }
             }
             is UnionType -> {
-                // Go has no concept of unions so we look for the shared common
-                // type. If none found we should use interface{}
                 if (oneOf.size > 1) {
                     val common = commonType(oneOf)
                     if (common != null) {
@@ -136,18 +134,28 @@ interface RustObjectTypeExtensions : ExtensionsBase {
     }
 
     private fun ObjectType.getDependencies(): List<VrapType> {
-        var dependentTypes = this.allProperties
+        val subtypeDependencies: List<VrapType> = if (this.isDiscriminated()) {
+            this.subTypes.flatMap {
+                when (it) {
+                    is ObjectType -> it.getDependencies()
+                    else -> listOf()
+                }
+            }
+        } else {
+            listOf()
+        }
+
+        val typeDependencies: List<AnyType> = this.allProperties
             .map { it.type }
-            .plus(subTypes.plus(subTypes.flatMap { it.subTypes }).distinctBy { it.name })
-            .plus(type)
             .flatMap { if (it is UnionType) Collections.singletonList(commonType(it.oneOf)).filterNotNull() else Collections.singletonList(it) }
             .filterNotNull()
 
-        return dependentTypes
+        return typeDependencies
             .map { it.toVrapType() }
             .map { it.flattenVrapType() }
             .filterNotNull()
             .filter { it !is VrapScalarType }
+            .plus(subtypeDependencies)
     }
 
     private fun List<VrapType>.getImportsForModelVrapTypes(moduleName: String): List<String> {
@@ -169,9 +177,9 @@ interface RustObjectTypeExtensions : ExtensionsBase {
                 }
             }
             .toSortedMap()
-            .map {
-                val allImportedClasses = it.value.map { it.simpleRustName() }.sorted().joinToString(", ")
-                "crate::${it.key}::{$allImportedClasses}"
+            .map { entry ->
+                val allImportedClasses = entry.value.map { it.simpleRustName() }.sorted().joinToString(", ")
+                "crate::${entry.key}::{$allImportedClasses}"
             }
     }
 
