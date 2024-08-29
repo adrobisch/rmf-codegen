@@ -15,26 +15,42 @@ class RustClientFileProducer constructor(
 
     override fun produceFiles(): List<TemplateFile> {
         return listOf(
+            produceLibFile(),
             produceClientFile(),
             produceErrorsFile(),
         )
     }
 
+    fun produceLibFile(): TemplateFile {
+        val clientMethodFiles = api.allContainedResources.map { resource -> """mod ${resource.rustClientFileName()};""" }
+            .joinToString("\n")
+
+        return TemplateFile(
+            relativePath = "client/src/lib.rs",
+            content = """$rustGeneratedComment
+                |$clientMethodFiles
+                |mod errors;
+            """.trimMargin().keepIndentation())
+    }
+
     fun produceClientFile(): TemplateFile {
         return TemplateFile(
-            relativePath = "src/client/client.rs",
-            content = """|
-                |$rustGeneratedComment
-            """.trimMargin()
+            relativePath = "client/src/client.rs",
+            content = """$rustGeneratedComment\n""".trimMargin()
         )
     }
 
     fun produceErrorsFile(): TemplateFile {
         return TemplateFile(
-            relativePath = "src/client/errors.rs",
-            content = """|
-                |$rustGeneratedComment
-            """.trimMargin().keepIndentation()
-        )
+            relativePath = "client/src/errors.rs",
+            content = """|$rustGeneratedComment
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum SdkError {
+    #[error("http error")]
+    HttpError(#[from] reqwest::Error)
+}
+""".trimMargin().keepIndentation())
     }
 }

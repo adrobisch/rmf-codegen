@@ -18,7 +18,7 @@ import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Resource
 import io.vrap.rmf.raml.model.types.FileType
 
-class RequestBuilder constructor(
+class RequestMethodRenderer constructor(
     private val clientConstants: ClientConstants,
     val api: Api,
     override val vrapTypeProvider: VrapTypeProvider,
@@ -28,9 +28,8 @@ class RequestBuilder constructor(
     override fun render(type: Resource): TemplateFile {
         val filename = type.rustClientFileName()
         return TemplateFile(
-            relativePath = "src/client/$filename.rs",
-            content = """|
-                |$rustGeneratedComment
+            relativePath = "client/src/$filename.rs",
+            content = """|$rustGeneratedComment
                 |
                 |<${type.importStatement()}>
                 |
@@ -78,17 +77,8 @@ class RequestBuilder constructor(
     protected fun Resource.methods(): String {
         return this.methods.map { renderMethod(it) }.joinToString(separator = "\n\n")
     }
-    /*
-     * Render the method func
-     *
-     * For example:
-     *   func (rb *ByProjectKeyProductsRequestBuilder) Get() *ByProjectKeyProductsRequestMethodGet {
-     *        return &ByProjectKeyProductsRequestMethodGet{
-     *            url:    fmt.Sprintf("/%s/products", rb.projectKey),
-     *            client: rb.client,
-     *        }
-     *    }
-     */
+
+
     private fun Resource.renderMethod(method: Method): String {
         val bodyVrapType = method.vrapType()
         val methodKwargs = listOf<String>()
@@ -116,6 +106,17 @@ class RequestBuilder constructor(
         val endpoint = transformUriTemplate(this.fullUri.template)
         return """
         |<${method.toBlockComment().escapeAll()}>
+        |/*
+        |use crate::errors::SdkError;
+            async fn by_project_key_products_search(project_key: String) -> Result<serde_json::Value, SdkError> {
+                let response = reqwest::get(format!("{project_key}/products/search"))
+                    .await?
+                    .json::<serde_json::Value>()
+                    .await?;
+                Ok(response)
+            }
+        |
+        |*/
         |func (rb *${this.toStructName()}) ${method.methodName.exportName()}(<$methodKwargs>) *${method.toStructName()} {
         |    return &${method.toStructName()}{
         |        <${if (bodyVrapType != null) "body: body," else ""}>

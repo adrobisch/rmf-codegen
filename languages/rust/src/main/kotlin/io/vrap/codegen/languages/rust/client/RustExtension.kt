@@ -8,7 +8,7 @@ import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Resource
 import io.vrap.rmf.raml.model.types.AnyType
 
-fun Resource.toRequestBuilderName(): String = "${this.toResourceName()}RequestBuilder"
+fun Resource.toRequestBuilderName(): String = "${this.toResourceName()}Request"
 
 fun Resource.toStructName(): String {
     return this.toRequestBuilderName().exportName()
@@ -18,19 +18,15 @@ fun Method.toStructName(): String {
     return "${this.resource().toResourceName()}RequestMethod${this.methodName.exportName()}".exportName()
 }
 
-fun Resource.rustClientFileName(): String {
-    return listOf<String>(
-        "client",
-        resourcePathName.snakeCase(),
-        this.toResourceName().snakeCase()
-    ).filter { x -> x != "" }.joinToString(separator = "_")
+fun Resource.rustResourceName(): String {
+    return resourcePathName.snakeCase()
 }
 
-fun Method.rustClientFileName(): String {
-    return listOf<String>(
+fun Resource.rustClientFileName(): String {
+    return listOf(
         "client",
-        resource().resourcePathName.snakeCase(),
-        "${this.resource().toResourceName()}${this.methodName.exportName()}".snakeCase()
+        rustResourceName(),
+        this.toResourceName().snakeCase()
     ).filter { x -> x != "" }.joinToString(separator = "_")
 }
 

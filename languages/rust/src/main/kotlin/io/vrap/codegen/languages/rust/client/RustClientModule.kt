@@ -9,7 +9,7 @@ object RustClientModule : Module {
     override fun configure(generatorModule: RamlGeneratorModule) = setOf (
         ResourceGenerator(
             setOf(
-                RequestBuilder(
+                RequestMethodRenderer(
                     generatorModule.clientConstants(),
                     generatorModule.provideRamlModel(),
                     generatorModule.vrapTypeProvider(),

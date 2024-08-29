@@ -31,19 +31,30 @@ class RustModelFileProducer constructor(
             .map { entry: Map.Entry<String, List<AnyType>> ->
                 buildModule(entry.key, entry.value)
             }
-            .toList() + buildCargoToml() + buildLibRs()
+            .toList() + buildRootCargoToml() + buildModelCargoToml() + buildClientCargoToml() + buildModelsLibRs()
     }
 
-    private fun buildLibRs(): TemplateFile {
+    private fun buildModelsLibRs(): TemplateFile {
         val mods = modules.keys.map { key ->
             "mod ${key};"
         }.toList().joinToString("\n")
-        return TemplateFile(mods, "src/lib.rs")
+        return TemplateFile(mods, "models/src/lib.rs")
     }
 
-    private fun buildCargoToml(): TemplateFile {
+    private fun buildRootCargoToml(): TemplateFile {
+        val content = """
+[workspace]
+members = [
+   "models",
+   "client"
+]
+""".trimMargin().keepIndentation()
+        return TemplateFile(content, "Cargo.toml")
+    }
+
+    private fun buildModelCargoToml(): TemplateFile {
         val content = """[package]
-name = "ct-rust-sdk"
+name = "ct-rust-sdk-models"
 version = "0.1.0"
 edition = "2021"
 
@@ -52,8 +63,25 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 """.trimMargin().keepIndentation()
+        return TemplateFile(content, "models/Cargo.toml")
+    }
 
-        return TemplateFile(content, "Cargo.toml")
+    private fun buildClientCargoToml(): TemplateFile {
+        val content = """[package]
+name = "ct-rust-sdk-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+thiserror = "1"
+ct-rust-sdk-models = { path = "../models" }
+""".trimMargin().keepIndentation()
+        return TemplateFile(content, "client/Cargo.toml")
     }
 
     private fun buildModule(moduleName: String, types: List<AnyType>): TemplateFile {
@@ -79,7 +107,7 @@ chrono = { version = "0.4", features = ["serde"] }
        """.trimMargin().keepIndentation()
 
         val filename = moduleName.rustModuleFileName()
-        return TemplateFile(content, "src/models/" + filename + ".rs")
+        return TemplateFile(content, "models/src/" + filename + ".rs")
     }
 
     private fun AnyType.renderAnyType(): String {
