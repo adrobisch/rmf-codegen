@@ -6,8 +6,6 @@ import io.vrap.codegen.languages.extensions.resource
 import io.vrap.codegen.languages.extensions.toResourceName
 import io.vrap.codegen.languages.rust.exportName
 import io.vrap.codegen.languages.rust.snakeCase
-import io.vrap.rmf.codegen.firstLowerCase
-import io.vrap.rmf.codegen.firstUpperCase
 import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Resource
 import io.vrap.rmf.raml.model.types.AnyType
@@ -15,7 +13,7 @@ import io.vrap.rmf.raml.model.util.StringCaseFormat
 import java.util.stream.Collectors
 
 fun Method.toRequestName(): String {
-    return this.resource().fullUri.toParamName("by")
+    return this.resource().fullUri.toParamName("")
 }
 
 fun UriTemplate.toParamName(delimiter: String): String {
@@ -30,7 +28,7 @@ fun UriTemplate.toParamName(delimiter: String, suffix: String): String {
                 .collect(Collectors.joining("_"))
             return@map foo
         }
-        StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(uriTemplatePart.toString().replace("/", "").replace("=", ""))
+        StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(uriTemplatePart.toString().replace("/", "_").replace("=", ""))
     }.collect(Collectors.joining("_")).snakeCase()
     return snakeCase
 }

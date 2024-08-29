@@ -198,9 +198,9 @@ interface RustObjectTypeExtensions : ExtensionsBase {
             .toSortedMap { a, b -> a.first.compareTo(b.first) }
             .map { entry ->
                 val allImportedClasses = if (entry.value.size == 1)
-                    entry.value.first().simpleRustName()
+                    entry.value.first().rustTypeName()
                  else
-                    "{${entry.value.map { it.simpleRustName() }.sorted().joinToString(", ")}}"
+                    "{${entry.value.map { it.rustTypeName() }.sorted().joinToString(", ")}}"
 
                 val isExternal = entry.key.second
                 val prefix = if (isExternal) "" else "crate::"
@@ -224,7 +224,7 @@ interface RustObjectTypeExtensions : ExtensionsBase {
     fun ObjectType.getSuperProperties(): List<Property> {
         return when (this.type) {
             is ObjectType -> (this.type as ObjectType).allProperties
-            else -> emptyList<Property>()
+            else -> emptyList()
         }
     }
 

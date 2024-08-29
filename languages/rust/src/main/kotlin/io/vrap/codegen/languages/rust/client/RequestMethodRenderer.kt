@@ -4,7 +4,6 @@ import io.vrap.codegen.languages.rust.*
 import io.vrap.codegen.languages.rust.RustObjectTypeExtensions
 import io.vrap.codegen.languages.rust.exportName
 import io.vrap.codegen.languages.rust.rustName
-import io.vrap.codegen.languages.rust.rustTypeName
 import io.vrap.rmf.codegen.di.BasePackageName
 import io.vrap.rmf.codegen.io.TemplateFile
 import io.vrap.rmf.codegen.rendering.ResourceRenderer
@@ -30,7 +29,6 @@ class RequestMethodRenderer constructor(
             relativePath = "client/src/$filename.rs",
             content = """|$rustGeneratedComment
                 |
-                |${resource.importStatement()}
                 |<${resource.methods()}>
             """.trimMargin().keepIndentation()
         )
@@ -54,46 +52,33 @@ class RequestMethodRenderer constructor(
             """.trimMargin()
     }
 
-    private fun Resource.importStatement(): String {
-        return """use crate::errors::SdkError;
-        """.trimMargin().trimIndent()
-    }
-
     protected fun Resource.methods(): String {
         return this.methods.map { renderMethod(it) }.joinToString(separator = "\n\n")
     }
 
-
     private fun Resource.renderMethod(method: Method): String {
         val bodyVrapType = method.vrapType()
-        val methodKwargs = listOf<String>()
-            .plus(
-                {
-                    if (bodyVrapType != null && bodyVrapType !is VrapNilType) "body ${method.vrapType()?.rustTypeName()}" else ""
-                }()
-            )
-            .filter {
-                it != ""
-            }
-            .joinToString(separator = ", ")
+        val hasBody = bodyVrapType != null && bodyVrapType !is VrapNilType
+        val bodyParam = if (hasBody) "payload: ${bodyVrapType?.qualifiedName("ct_rust_sdk_models")}" else ""
 
         val assignments =
-            this.relativeUri.variables
-                .map { it.rustName() }
-                .map { "$it: String"}
-                .plus(
-                    (this.fullUri.variables.asList() - this.relativeUri.variables.asList())
+            listOf("context: crate::client::ClientContext") +
+                    this.relativeUri.variables
                         .map { it.rustName() }
-                        .map { "$it: String"}
-                )
-
+                        .map { "$it: String" }
+                        .plus(
+                            (this.fullUri.variables.asList() - this.relativeUri.variables.asList().toSet())
+                                .map { it.rustName() }
+                                .map { "$it: String" }
+                        )
 
         val endpoint = transformUriTemplate(this.fullUri.template)
         return """
         |<${method.toBlockComment().escapeAll()}>
-        |pub async fn ${method.methodName.exportName()}_${method.toRequestName()}(${assignments.joinToString(", ")}) -\> Result\<serde_json::Value, SdkError\> {
-        |        let client = reqwest::Client::new();
-        |        let response = client.${method.methodName.exportName()}(${endpoint})
+        |pub async fn ${method.methodName.exportName()}_${method.toRequestName()}(${assignments.joinToString(", ")}${if (hasBody) ", $bodyParam" else "" }) -\> Result\<serde_json::Value, crate::errors::SdkError\> {
+        |        let request = context.request(reqwest::Method::${method.methodName.exportName().uppercase()}, ${endpoint}).await?;
+        |        let response = request
+        |            <${if (hasBody) ".json(&payload)" else ""}>  
         |            .send()
         |            .await?
         |            .json::\<serde_json::Value\>()
@@ -111,7 +96,7 @@ class RequestMethodRenderer constructor(
         val args = mutableListOf<String>()
         matches.map { it.groupValues[1] }.forEach {
             pattern = pattern.replace("{$it}", "{}")
-            args.add("${it.rustName()}")
+            args.add(it.rustName())
         }
         return "format![\"${pattern}\", ${args.joinToString(", ")}]"
     }

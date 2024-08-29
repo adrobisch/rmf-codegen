@@ -36,7 +36,7 @@ class RustModelFileProducer constructor(
 
     private fun buildModelsLibRs(): TemplateFile {
         val mods = modules.keys.map { key ->
-            "mod ${key};"
+            "pub mod ${key};"
         }.toList().joinToString("\n")
         return TemplateFile(mods, "models/src/lib.rs")
     }
