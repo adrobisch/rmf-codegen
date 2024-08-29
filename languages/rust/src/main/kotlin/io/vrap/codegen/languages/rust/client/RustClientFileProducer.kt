@@ -86,7 +86,7 @@ impl ClientContext {
     pub async fn request<U: IntoUrl>(&self, method: reqwest::Method, path: U) -> Result<RequestBuilder, SdkError> {
         match &self.current_token {
             Some(token) => Ok(self.client.request(method, format!("{}{}", self.api_url, path.as_str())).bearer_auth(token)),
-            None => todo!()
+            None => todo!("implement auth flow")
         }
     }
 }
