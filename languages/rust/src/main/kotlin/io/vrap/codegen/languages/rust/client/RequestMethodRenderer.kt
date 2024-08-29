@@ -31,10 +31,6 @@ class RequestMethodRenderer constructor(
             relativePath = "client/src/$filename.rs",
             content = """|$rustGeneratedComment
                 |
-                |<${type.importStatement()}>
-                |
-                |<${type.constructor()}>
-                |<${type.subResources(type.toRequestBuilderName().exportName())}>
                 |<${type.methods()}>
             """.trimMargin().keepIndentation()
         )
@@ -95,34 +91,23 @@ class RequestMethodRenderer constructor(
         val assignments =
             this.relativeUri.variables
                 .map { it.rustName() }
-                .map { "$it: rb.$it," }
+                .map { "$it: String"}
                 .plus(
                     (this.fullUri.variables.asList() - this.relativeUri.variables.asList())
                         .map { it.rustName() }
-                        .map { "$it: rb.$it," }
+                        .map { "$it: String"}
                 )
-                .joinToString(separator = "\n")
+
 
         val endpoint = transformUriTemplate(this.fullUri.template)
         return """
         |<${method.toBlockComment().escapeAll()}>
-        |/*
-        |use crate::errors::SdkError;
-            async fn by_project_key_products_search(project_key: String) -> Result<serde_json::Value, SdkError> {
-                let response = reqwest::get(format!("{project_key}/products/search"))
-                    .await?
-                    .json::<serde_json::Value>()
-                    .await?;
-                Ok(response)
-            }
-        |
-        |*/
-        |func (rb *${this.toStructName()}) ${method.methodName.exportName()}(<$methodKwargs>) *${method.toStructName()} {
-        |    return &${method.toStructName()}{
-        |        <${if (bodyVrapType != null) "body: body," else ""}>
-        |        url: $endpoint,
-        |        client: rb.client,
-        |    }
+        |pub async fn ${method.methodName.exportName()}_${method.toRequestName()}(${assignments.joinToString(", ")}) -\> Result\<serde_json::Value, SdkError\> {
+        |        let response = reqwest::${method.methodName.exportName()}(${endpoint})
+        |            .await?
+        |            .json::\<serde_json::Value\>()
+        |            .await?;
+        |        Ok(response)
         |}
         """.trimMargin()
     }
@@ -134,10 +119,10 @@ class RequestMethodRenderer constructor(
         var pattern = template
         val args = mutableListOf<String>()
         matches.map { it.groupValues[1] }.forEach {
-            pattern = pattern.replace("{$it}", "%s")
-            args.add("rb.${it.rustName()}")
+            pattern = pattern.replace("{$it}", "{}")
+            args.add("${it.rustName()}")
         }
-        return "fmt.Sprintf(\"${pattern}\", ${args.joinToString(", ")})"
+        return "format![\"${pattern}\", ${args.joinToString(", ")}]"
     }
 
     fun Method.vrapType(): VrapType? {
