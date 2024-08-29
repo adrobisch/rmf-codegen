@@ -16,7 +16,6 @@ import io.vrap.rmf.codegen.types.VrapTypeProvider
 import io.vrap.rmf.raml.model.modules.Api
 import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Resource
-import io.vrap.rmf.raml.model.types.FileType
 
 class RequestMethodRenderer constructor(
     private val clientConstants: ClientConstants,
@@ -25,13 +24,14 @@ class RequestMethodRenderer constructor(
     @BasePackageName val basePackageName: String
 ) : ResourceRenderer, RustObjectTypeExtensions {
 
-    override fun render(type: Resource): TemplateFile {
-        val filename = type.rustClientFileName()
+    override fun render(resource: Resource): TemplateFile {
+        val filename = resource.rustClientFileName()
         return TemplateFile(
             relativePath = "client/src/$filename.rs",
             content = """|$rustGeneratedComment
                 |
-                |<${type.methods()}>
+                |${resource.importStatement()}
+                |<${resource.methods()}>
             """.trimMargin().keepIndentation()
         )
     }
@@ -55,19 +55,8 @@ class RequestMethodRenderer constructor(
     }
 
     private fun Resource.importStatement(): String {
-        val modules = mutableListOf<String>()
-
-        if (this.methods.size > 0) {
-            modules.add("fmt")
-        }
-
-        if (this.methods.any { it.bodyType() is FileType }) {
-            modules.add("io")
-        }
-
-        return modules
-            .map { "    \"$it\"" }
-            .joinToString(prefix = "import(\n", separator = "\n", postfix = "\n)")
+        return """use crate::errors::SdkError;
+        """.trimMargin().trimIndent()
     }
 
     protected fun Resource.methods(): String {
@@ -103,7 +92,9 @@ class RequestMethodRenderer constructor(
         return """
         |<${method.toBlockComment().escapeAll()}>
         |pub async fn ${method.methodName.exportName()}_${method.toRequestName()}(${assignments.joinToString(", ")}) -\> Result\<serde_json::Value, SdkError\> {
-        |        let response = reqwest::${method.methodName.exportName()}(${endpoint})
+        |        let client = reqwest::Client::new();
+        |        let response = client.${method.methodName.exportName()}(${endpoint})
+        |            .send()
         |            .await?
         |            .json::\<serde_json::Value\>()
         |            .await?;

@@ -30,7 +30,7 @@ fun UriTemplate.toParamName(delimiter: String, suffix: String): String {
                 .collect(Collectors.joining("_"))
             return@map foo
         }
-        StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(uriTemplatePart.toString().replace("/", "-"))
+        StringCaseFormat.LOWER_UNDERSCORE_CASE.apply(uriTemplatePart.toString().replace("/", "").replace("=", ""))
     }.collect(Collectors.joining("_")).snakeCase()
     return snakeCase
 }
