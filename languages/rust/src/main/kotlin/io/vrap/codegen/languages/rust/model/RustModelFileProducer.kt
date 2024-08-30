@@ -42,46 +42,15 @@ class RustModelFileProducer constructor(
     }
 
     private fun buildRootCargoToml(): TemplateFile {
-        val content = """
-[workspace]
-members = [
-   "models",
-   "client"
-]
-""".trimMargin().keepIndentation()
-        return TemplateFile(content, "Cargo.toml")
+        return TemplateFile("Cargo.root.toml".readFromClassPath()!!, "Cargo.toml")
     }
 
     private fun buildModelCargoToml(): TemplateFile {
-        val content = """[package]
-name = "ct-rust-sdk-models"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
-""".trimMargin().keepIndentation()
-        return TemplateFile(content, "models/Cargo.toml")
+        return TemplateFile("Cargo.models.toml".readFromClassPath()!!, "models/Cargo.toml")
     }
 
     private fun buildClientCargoToml(): TemplateFile {
-        val content = """[package]
-name = "ct-rust-sdk-client"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
-reqwest = { version = "0.12", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
-thiserror = "1"
-ct-rust-sdk-models = { path = "../models" }
-""".trimMargin().keepIndentation()
-        return TemplateFile(content, "client/Cargo.toml")
+        return TemplateFile("Cargo.client.toml".readFromClassPath()!!, "client/Cargo.toml")
     }
 
     private fun buildModule(moduleName: String, types: List<AnyType>): TemplateFile {
