@@ -3,3 +3,4 @@ members = [
     "models",
     "client"
 ]
+resolver = "2"

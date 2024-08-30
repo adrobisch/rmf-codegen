@@ -49,7 +49,7 @@ impl ClientContext {
         let token: String = match &self.current_token {
             Some(token) => token.access_token.to_string(),
             None => {
-                let response = self.client.post("/oauth/token")
+                let response = self.client.post(format!("{}/oauth/token", self.auth_url))
                     .basic_auth(&self.credentials.client_id, Some(&self.credentials.client_secret))
                     .form(&[("grant_type", "client_credentials")])
                     .send()
