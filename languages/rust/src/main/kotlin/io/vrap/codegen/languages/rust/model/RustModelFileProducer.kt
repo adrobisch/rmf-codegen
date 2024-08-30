@@ -89,6 +89,9 @@ class RustModelFileProducer constructor(
 
     private fun ObjectType.renderObjectType(): String {
         if (this.isMap()) {
+            // TODO: some types ending up here are actually enum-like but not necessarily clearly discriminated
+            // the generation below (the else branches) will not work for those
+            // while HashMap<String, Value> works for, it is not a nice interface
             val valueType = if (allProperties.size > 0) allProperties.first().type.renderTypeExpr(listOf()) else "serde_json::Value"
 
             return """
@@ -98,7 +101,7 @@ class RustModelFileProducer constructor(
         } else if (this.isDiscriminated()) {
             val interfaceExpr = """
                 |<${toBlockComment().escapeAll()}>
-                |#[derive(Serialize, Deserialize)]
+                |#[derive(Serialize, Deserialize, Clone, Debug)]
                 |#[serde(tag = "${discriminator}")]
                 |pub enum ${name.exportName()} {
                 |  <${renderSubtypeEnumStructs()}>
@@ -111,7 +114,7 @@ class RustModelFileProducer constructor(
         } else {
             val structField = """
                 |<${toBlockComment().escapeAll()}>
-                |#[derive(Serialize, Deserialize)]
+                |#[derive(Serialize, Deserialize, Clone, Debug)]
                 |pub struct ${name.exportName()} {
                 |  <${renderStructFields(pubFields = true, includeDiscriminator = this.type != null && this.type.isDiscriminated())}>
                 |}
@@ -179,7 +182,7 @@ class RustModelFileProducer constructor(
             is VrapEnumType ->
                 return """
                 |<${toBlockComment().escapeAll()}>
-                |#[derive(Serialize, Deserialize)]
+                |#[derive(Serialize, Deserialize, Clone, Debug)]
                 |pub enum ${vrapType.simpleClassName.exportName()} {
                 |  <${this.renderEnumValues()}>
                 |}
