@@ -14,7 +14,8 @@ object RustBaseTypes : LanguageBaseTypes(
     dateTimeType = nativeRustType("DateTime\\<Utc\\>"),
     dateOnlyType = nativeRustType("DateTime\\<Utc\\>"),
     timeOnlyType = nativeRustType("DateTime\\<Utc\\>"),
-    file = nativeRustType("std::fs::File")
+    // TODO: consider handling std::fs::File directly
+    file = nativeRustType("Vec\\<u8\\>")
 )
 
 fun nativeRustType(typeName: String): VrapScalarType = VrapScalarType(typeName)

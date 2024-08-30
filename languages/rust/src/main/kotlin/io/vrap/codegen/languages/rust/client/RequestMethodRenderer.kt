@@ -15,6 +15,7 @@ import io.vrap.rmf.codegen.types.VrapTypeProvider
 import io.vrap.rmf.raml.model.modules.Api
 import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Resource
+import io.vrap.rmf.raml.model.types.FileType
 
 class RequestMethodRenderer constructor(
     private val clientConstants: ClientConstants,
@@ -57,6 +58,11 @@ class RequestMethodRenderer constructor(
     }
 
     private fun Resource.renderMethod(method: Method): String {
+        val body = method.firstBody()
+        val contentType = method.firstBody()?.contentType?.lowercase()
+        val jsonContent = contentType?.startsWith("application/json") == true || contentType?.startsWith("application/graphql") == true
+        val useJson = body?.type !is FileType && jsonContent
+
         val bodyVrapType = method.vrapType()
         val hasBody = bodyVrapType != null && bodyVrapType !is VrapNilType
         val bodyParam = if (hasBody) "payload: ${bodyVrapType?.qualifiedName("ct_rust_sdk_models")}" else ""
@@ -73,12 +79,15 @@ class RequestMethodRenderer constructor(
                         )
 
         val endpoint = transformUriTemplate(this.fullUri.template)
+        val requestName = method.toRequestName()
+        val methodName = method.methodName.exportName()
+
         return """
         |<${method.toBlockComment().escapeAll()}>
-        |pub async fn ${method.methodName.exportName()}_${method.toRequestName()}(${assignments.joinToString(", ")}${if (hasBody) ", $bodyParam" else "" }) -\> Result\<serde_json::Value, crate::errors::SdkError\> {
-        |        let request = context.request(reqwest::Method::${method.methodName.exportName().uppercase()}, ${endpoint}).await?;
+        |pub async fn ${methodName}_$requestName(${assignments.joinToString(", ")}${if (hasBody) ", $bodyParam" else "" }) -\> Result\<serde_json::Value, crate::errors::SdkError\> {
+        |        let request = context.request(reqwest::Method::${methodName.uppercase()}, ${endpoint}).await?;
         |        let response = request
-        |            <${if (hasBody) ".json(&payload)" else ""}>  
+        |            <${if (useJson) ".json(&payload)" else if (hasBody) ".body(payload)" else ""}>  
         |            .send()
         |            .await?
         |            .json::\<serde_json::Value\>()
@@ -98,7 +107,7 @@ class RequestMethodRenderer constructor(
             pattern = pattern.replace("{$it}", "{}")
             args.add(it.rustName())
         }
-        return "format![\"${pattern}\", ${args.joinToString(", ")}]"
+        return "format!(\"${pattern}\", ${args.joinToString(", ")})"
     }
 
     fun Method.vrapType(): VrapType? {

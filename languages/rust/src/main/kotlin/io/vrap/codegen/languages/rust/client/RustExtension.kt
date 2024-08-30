@@ -8,6 +8,7 @@ import io.vrap.codegen.languages.rust.exportName
 import io.vrap.codegen.languages.rust.snakeCase
 import io.vrap.rmf.raml.model.resources.Method
 import io.vrap.rmf.raml.model.resources.Resource
+import io.vrap.rmf.raml.model.responses.Body
 import io.vrap.rmf.raml.model.types.AnyType
 import io.vrap.rmf.raml.model.util.StringCaseFormat
 import java.util.stream.Collectors
@@ -51,9 +52,13 @@ fun Resource.rustClientFileName(): String {
     ).filter { x -> x != "" }.joinToString(separator = "_")
 }
 
-fun Method.bodyType(): AnyType? {
+fun Method.firstBody(): Body? {
     if (bodies.isNotEmpty()) {
-        return bodies[0].type
+        return bodies[0]
     }
     return null
+}
+
+fun Method.bodyType(): AnyType? {
+    return firstBody()?.type
 }
