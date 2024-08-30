@@ -62,7 +62,7 @@ class RequestMethodRenderer constructor(
         val bodyParam = if (hasBody) "payload: ${bodyVrapType?.qualifiedName("ct_rust_sdk_models")}" else ""
 
         val assignments =
-            listOf("context: crate::client::ClientContext") +
+            listOf("mut context: crate::client::ClientContext") +
                     this.relativeUri.variables
                         .map { it.rustName() }
                         .map { "$it: String" }

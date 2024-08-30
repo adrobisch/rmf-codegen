@@ -12,7 +12,7 @@ struct ClientCredentials {
 pub struct ClientContext {
     auth_url: String,
     api_url: String,
-    current_token: Option<String>,
+    current_token: Option<TokenResponse>,
     client: reqwest::Client,
     credentials: ClientCredentials
 }
@@ -44,10 +44,31 @@ impl ClientContext {
         })
     }
 
-    pub async fn request<U: IntoUrl>(&self, method: reqwest::Method, path: U) -> Result<RequestBuilder, SdkError> {
-        match &self.current_token {
-            Some(token) => Ok(self.client.request(method, format!("{}{}", self.api_url, path.as_str())).bearer_auth(token)),
-            None => todo!("implement auth flow")
-        }
+
+    pub async fn request<U: IntoUrl>(&mut self, method: reqwest::Method, path: U) -> Result<RequestBuilder, SdkError> {
+        let token: String = match &self.current_token {
+            Some(token) => token.access_token.to_string(),
+            None => {
+                let response = self.client.post("/oauth/token")
+                    .basic_auth(&self.credentials.client_id, Some(&self.credentials.client_secret))
+                    .form(&[("grant_type", "client_credentials")])
+                    .send()
+                    .await?
+                    .json::<TokenResponse>()
+                    .await?;
+                self.current_token = Some(response.clone());
+                response.access_token
+            }
+        };
+        Ok(self.client.request(method, format!("{}{}", self.api_url, path.as_str())).bearer_auth(token))
+
     }
+}
+
+#[derive(serde::Deserialize, Clone)]
+struct TokenResponse {
+    access_token: String,
+    token_type: String,
+    expires_in: u64,
+    scope: String,
 }
